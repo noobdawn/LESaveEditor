@@ -1,5 +1,7 @@
 # LE Save Editor — Last Epoch 存档同步修改器
 
+[在线使用](https://noobdawn.github.io/LESaveEditor/) · [源代码](https://github.com/noobdawn/LESaveEditor)
+
 在 [LastEpochTools](https://www.lastepochtools.com/planner/zh/) 配装，粘贴分享链接，在浏览器中将构筑应用到自己的离线存档。支持右上角中英文切换，可部署为 GitHub Pages 静态网站。普通使用不需要 Python、油猴脚本或后端。
 
 当前数据基准：**游戏 1.5.2.1（内部版本 1.5.2.2）、Steam build 25816319**。接受 1.5.x 配装，并逐项验证当前物品、节点和技能；未来游戏更新仍需复核数据。
