@@ -120,3 +120,18 @@ test('fixed-pool unique variants survive the local read-only overview and native
   assert.equal(build.data.equipment.ring1.lp, 3);
   assert.deepEqual(wrapped(build.data.equipment.ring1, 10, 108).data, save.savedItems[0].data);
 });
+
+test('corruption-sealed legendary and primordial normal affixes survive native round-trip with separate seals', () => {
+  const save=character();
+  save.savedItems=[wrapped({id:'UAwRgrALA7CQ',faction:[1,5],duplicated:true,affixes:[affix(26,6,40)],corruptedAffix:affix(86,4,90)},2,109),
+    wrapped({id:baseId(2,2),sealedAffix:affix(32,3,11),corruptedAffix:affix(70,4,22),primordialAffix:affix(86,8,33),affixes:[affix(26,5,44)]},7,110)];
+  const {build,warnings}=saveToPlannerBuild(save);
+  assert.equal(warnings.filter(w=>w.slot).length,0);
+  // The mapper must retain the copied-source identity bit when expressing this item.
+  assert.deepEqual(build.data.equipment.head.corruptedAffix,affix(86,4,90));
+  assert.deepEqual(build.data.equipment.waist.primordialAffix,affix(86,8,33));
+  const head=wrapped(build.data.equipment.head,2,109);
+  assert.equal(build.data.equipment.head.duplicated,true);
+  assert.deepEqual(head.data,save.savedItems[0].data);
+  assert.deepEqual(wrapped(build.data.equipment.waist,7,110).data,save.savedItems[1].data);
+});

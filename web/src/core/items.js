@@ -28,6 +28,12 @@ function int(value, min, max, field) {
   return n;
 }
 const byte = (value, field) => int(value, 0, 255, field);
+function flag(value, field) {
+  if (value == null) return false;
+  if (![true, false, 0, 1].includes(value)) fail('INVALID_ITEM', `无效物品标志：${field} / Invalid item flag: ${field}`, { field });
+  return Boolean(value);
+}
+
 function bytes(value, count, field) {
   if (!Array.isArray(value) || value.length !== count) fail('INVALID_ITEM', `Invalid byte count: ${field}`);
   return value.map((v, i) => byte(v, `${field}[${i}]`));
@@ -162,9 +168,9 @@ function nextIndividualId(usedIds) {
 }
 
 /** Convert an observed LET item record to the current game's saved item wrapper. */
-export function encodePlannerItem(item, { containerID, inventoryPosition = { x: 0, y: 0 }, usedIds, individualId, maxRolls = false } = {}) {
+export function encodePlannerItem(item, { containerID, inventoryPosition = { x: 0, y: 0 }, usedIds, individualId, maxRolls = false, offline = false } = {}) {
   const identity = resolvePlannerItemId(item?.id);
-  const allowedFields = new Set(['id', 'affixes', 'ir', 'ur', 'x', 'y', 'lp', 'legendaryPotential', 'ww', 'wt', 'sealedAffix', 'corruptedAffix', 'corrupted', 'ruined', 'faction']);
+  const allowedFields = new Set(['id', 'affixes', 'ir', 'ur', 'x', 'y', 'lp', 'legendaryPotential', 'ww', 'wt', 'sealedAffix', 'corruptedAffix', 'corrupted', 'ruined', 'faction', 'tradeable', 'duplicated', 'primordialAffix']);
   for (const key of Object.keys(item)) if (!allowedFields.has(key)) fail('UNSUPPORTED_ITEM_FEATURE', `尚未验证物品字段：${key} / Unverified item field: ${key}`, { field: key });
   for (const [key, count] of [['ir', 3], ['ur', 8]]) {
     if (item[key] != null && (!Array.isArray(item[key]) || item[key].length > count)) fail('INVALID_ROLLS', `Invalid ${key} array.`);
@@ -178,44 +184,54 @@ export function encodePlannerItem(item, { containerID, inventoryPosition = { x: 
     }
     const id = int(item.faction[0], 0, 1, 'faction[0]');
     const rank = int(item.faction[1], 0, worldData.factions[id].maxRank, 'faction[1]');
-    factionFlags = (id << 6) | rank;
+    factionFlags = offline && id === 1 ? 0 : (id << 6) | rank;
   }
   // These carry additional semantics that cannot be discarded safely.
   const isUnique = own(identity, 'uniqueId');
   const unique = isUnique ? catalog.uniques[identity.uniqueId] : null;
   const variantIds = unique?.specificAffixIds ?? [];
   const supportsVariants = unique?.specificAffixes && variantIds.length > 0 &&
-    variantIds.every(id => catalog.affixes[id]?.specialType === 7);
+    variantIds.every(id => [6, 7].includes(catalog.affixes[id]?.specialType));
   const sealedAffix = item.sealedAffix ? plannerAffix(item.sealedAffix) : null;
   // LET stores a fixed-pool FakeUniqueMod variant in sealedAffix. In the game
   // this is an ordinary affix record, not the rare item's regular-seal flag.
-  const sealedVariant = supportsVariants && sealedAffix && variantIds.includes(sealedAffix.affixId);
-  const corrupted = Boolean(item.corrupted || item.corruptedAffix || catalog.bases[identity.baseTypeId].subtypes[identity.subTypeId].corrupted);
-  if (item.ruined) fail('UNSUPPORTED_ITEM_FEATURE', '毁坏物品写入尚未验证 / Ruined item writing requires further verification.', { field: 'ruined' });
-  if (isUnique && corrupted) fail('UNSUPPORTED_ITEM_FEATURE', '腐化暗金写入尚未验证 / Corrupted unique writing requires further verification.', { field: 'corrupted' });
+  const sealedVariant = supportsVariants && sealedAffix && catalog.affixes[sealedAffix.affixId].specialType === 7 && variantIds.includes(sealedAffix.affixId);
+  const corrupted = Boolean(flag(item.corrupted, 'corrupted') || unique?.preCorrupted || item.corruptedAffix || catalog.bases[identity.baseTypeId].subtypes[identity.subTypeId].corrupted);
+  const ruined = flag(item.ruined, 'ruined');
+  const duplicated = flag(item.duplicated, 'duplicated');
+  flag(item.tradeable, 'tradeable'); // Source metadata; generated items remain untradeable.
+  const primordialAffix = item.primordialAffix ? plannerAffix(item.primordialAffix) : null;
+  if (primordialAffix && primordialAffix.tier !== 8) fail('INVALID_PRIMORDIAL_AFFIX', '原初词缀必须为 T8 / A primordial affix must have tier 8.', { field: 'primordialAffix.tier' });
+
   if (isUnique && sealedAffix && !sealedVariant) fail('UNSUPPORTED_ITEM_FEATURE', '此暗金的封印词缀不在已验证变体池中 / This unique sealed affix is not in a verified variant pool.', { field: 'sealedAffix' });
   if (!Array.isArray(item.affixes ?? [])) fail('INVALID_AFFIXES', 'Affixes must be an array.');
   const regularAffixes = (item.affixes ?? []).map(plannerAffix);
-  if (regularAffixes.filter(affix => !variantIds.includes(affix.affixId)).length > 4) fail('UNSUPPORTED_ITEM_FEATURE', 'More than four regular affixes are not supported.');
-  const affixes = [sealedAffix, item.corruptedAffix && plannerAffix(item.corruptedAffix), ...regularAffixes].filter(Boolean);
+  if (regularAffixes.filter(affix => catalog.affixes[affix.affixId].specialType !== 7).length > 4) fail('UNSUPPORTED_ITEM_FEATURE', 'More than four regular affixes are not supported.');
+  const corruptedAffix = item.corruptedAffix ? plannerAffix(item.corruptedAffix) : null;
+  // Native unique/legendary loaders mark the LAST affix as corruption-sealed;
+  // normal items use the first block after their ordinary sealed affix instead.
+  const affixes = (isUnique
+    ? [sealedAffix, primordialAffix, ...regularAffixes, corruptedAffix]
+    : [sealedAffix, corruptedAffix, primordialAffix, ...regularAffixes]).filter(Boolean);
+
   if (new Set(affixes.map(a => a.affixId)).size !== affixes.length) fail('DUPLICATE_AFFIX', 'Duplicate item affixes are not supported.');
   const descriptor = {
-    ...identity, individualId: individualId ?? nextIndividualId(usedIds),
-    rarity: Math.min(4, regularAffixes.length), flags: 128 | factionFlags | (corrupted ? 16 : 0), // Locally generated, always untradeable.
+    ...identity, individualId: individualId ?? nextIndividualId(usedIds), duplicated,
+    rarity: Math.min(4, regularAffixes.length), flags: 128 | factionFlags | (corrupted ? 16 : 0) | (ruined ? 32 : 0), // Locally generated, always untradeable.
     implicitRolls: Array.from({ length: 3 }, (_, i) => roll(item.ir?.[i], `ir[${i}]`)),
     affixes, potentialByte: 0, sealedFlags: (item.sealedAffix ? 128 : 0) | (item.corruptedAffix ? 64 : 0),
   };
   if (own(identity, 'uniqueId')) {
-    if (unique.cocooned || unique.preCorrupted || (unique.specificAffixes && !supportsVariants)) fail('UNSUPPORTED_ITEM_FEATURE', 'This unique has additional game-defined item features that need separate validation.');
+    if (unique.cocooned || (unique.preCorrupted && !supportsVariants) || (unique.specificAffixes && !supportsVariants)) fail('UNSUPPORTED_ITEM_FEATURE', 'This unique has additional game-defined item features that need separate validation.');
     if (supportsVariants) {
       const variants = affixes.filter(affix => variantIds.includes(affix.affixId));
-      if (variants.length !== unique.specificAffixCount || affixes.some(affix => catalog.affixes[affix.affixId].specialType === 7 && !variantIds.includes(affix.affixId))) {
+      if ((!corrupted && variants.length !== unique.specificAffixCount) || variants.length > unique.specificAffixCount || affixes.some(affix => catalog.affixes[affix.affixId].specialType === 7 && !variantIds.includes(affix.affixId))) {
         fail('INVALID_UNIQUE_VARIANT', '暗金变体词缀与当前游戏数据不匹配 / Unique variant affixes do not match the current game data.', { field: 'affixes' });
       }
     }
     // Native GenerateAffixes tests specialAffixType != FakeUniqueMod (7):
     // a variant alone retains unique rarity and can retain legendary potential.
-    const hasLegendaryAffixes = affixes.some(affix => !variantIds.includes(affix.affixId));
+    const hasLegendaryAffixes = affixes.some(affix => catalog.affixes[affix.affixId].specialType !== 7);
     descriptor.rarity = hasLegendaryAffixes ? 9 : unique.set ? 8 : 7;
     descriptor.uniqueRolls = Array.from({ length: 8 }, (_, i) => roll(item.ur?.[i], `ur[${i}]`));
     descriptor.extraFlags = 0;
@@ -229,6 +245,10 @@ export function encodePlannerItem(item, { containerID, inventoryPosition = { x: 
       const remaining = int(item.ww ?? 0, 0, 28, 'weaversWill');
       descriptor.extraFlags = affixes.length ? remaining << 3 : remaining;
     } else if (item.ww != null) fail('INVALID_ITEM_FEATURE', 'Only Weaver items can have remaining Weaver’s Will.');
+    if (descriptor.rarity === 9 && corrupted) {
+      if (item.ww != null && Number(item.ww) !== 0) fail('INVALID_ITEM_FEATURE', '腐化传奇不能保留剩余织造意志 / A corrupted legendary cannot retain remaining Weaver’s Will.', { field: 'ww' });
+      descriptor.extraFlags = corruptedAffix ? 128 : 0;
+    }
     if (item.wt != null) fail('UNSUPPORTED_ITEM_FEATURE', 'Weaver’s Touch on unique idols requires further verification.');
   } else {
     if (item.lp != null || item.legendaryPotential != null || item.ww != null) fail('INVALID_ITEM_FEATURE', 'This base item cannot use unique potential fields.');
@@ -294,8 +314,9 @@ export function applyPlannerItems(save, build, options = {}) {
   const usedIds = new Set(data.savedItems.filter(x => Number(x.data?.[0]) === 6 && x.data.length >= 5)
     .map(x => (Number(x.data[1]) & 127) * 0x1000000 + Number(x.data[2]) * 65536 + Number(x.data[3]) * 256 + Number(x.data[4])));
   const replacements = new Map();
+  let removedMerchantRequirement = false;
   function encodeSelected(item, context, path) {
-    try { return encodePlannerItem(item, context); }
+    try { const encoded = encodePlannerItem(item, { ...context, offline: true }); if (item.faction?.[0] === 1) removedMerchantRequirement = true; return encoded; }
     catch (error) {
       if (!(error instanceof UnsupportedItemError)) throw error;
       const [zh, en = zh] = error.message.split(' / ');
@@ -354,6 +375,7 @@ export function applyPlannerItems(save, build, options = {}) {
     data.savedItems.push(...newItems);
     if (replacements.has(29) || replacements.has(123)) validateEquippedIdolGrid(data.savedItems);
     changes.push({ path: 'savedItems', label: '装备、神像和祝福 / Equipment, idols and blessings', before: oldCount, after: newItems.length });
+    if (removedMerchantRequirement) warnings.push('已清除商人公会物品的阵营要求；生成物品均不可交易 / Merchant Guild item requirements were removed; generated items are untradeable.');
     warnings.push('新物品的未指定数值使用 LET 默认中间值；锻造潜能为 0。 / Omitted rolls use LET midpoint values; forging potential is 0.');
   }
   return { data, changes, warnings };

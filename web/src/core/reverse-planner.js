@@ -65,15 +65,20 @@ function itemRecord(savedItem, context) {
     fail('INVALID_BLESSING', '祝福容器中存在非祝福物品。', 'A blessing container contains a non-blessing item.');
   }
   const record = { id: itemId(item), ir: [...item.implicitRolls], affixes: [] };
+  if (item.duplicated) record.duplicated = true;
   if (item.flags & 15) record.faction = [(item.flags >> 6) & 1, item.flags & 15];
   if (item.flags & 32) record.ruined = true;
-  let affixOffset = 0;
+  let affixOffset = 0, affixEnd = item.affixes.length;
   if (UNIQUE_RARITIES.has(item.rarity)) {
     const unique = catalog.uniques[item.uniqueId];
     record.ur = [...item.uniqueRolls];
-    if (unique.legendaryType === 1) record.ww = item.rarity === 9 ? item.extraFlags >> 3 : item.extraFlags;
+    if (unique.legendaryType === 1) record.ww = item.rarity === 9 ? (item.flags & 16 ? 0 : item.extraFlags >> 3) : item.extraFlags;
     else if (item.rarity !== 9) record.lp = item.extraFlags;
-    else if (item.extraFlags) fail('UNKNOWN_LEGENDARY_FLAGS', '传奇物品包含尚未验证的额外标志。', 'The legendary item has unverified extra flags.');
+    else if (item.extraFlags && !((item.flags & 16) && item.extraFlags === 128)) fail('UNKNOWN_LEGENDARY_FLAGS', '传奇物品包含尚未验证的额外标志。', 'The legendary item has unverified extra flags.');
+    if (item.rarity === 9 && (item.flags & 16) && (item.extraFlags & 128)) {
+      if (!item.affixes.length) fail('MISSING_CORRUPTED_AFFIX', '腐化封印标志缺少词缀。', 'The corruption-seal flag has no matching affix.');
+      record.corruptedAffix = affixRecord(item.affixes[--affixEnd]);
+    }
     if (item.flags & 16) record.corrupted = true;
   } else {
     if (item.sealedFlags & 128) {
@@ -87,7 +92,9 @@ function itemRecord(savedItem, context) {
     if (item.flags & 16) record.corrupted = true;
     if (item.baseTypeId >= 25 && item.baseTypeId <= 33) record.wt = item.potentialByte;
   }
-  record.affixes = item.affixes.slice(affixOffset).map(affixRecord);
+  record.affixes = item.affixes.slice(affixOffset, affixEnd).map(affixRecord);
+  const primordialIndex = record.affixes.findIndex(affix => affix.tier === 8);
+  if (primordialIndex >= 0) record.primordialAffix = record.affixes.splice(primordialIndex, 1)[0];
   if (context.slot === 'idol') {
     const [width, height] = catalog.bases[item.baseTypeId].size;
     const x = integer(savedItem.inventoryPosition?.x, 0, 4, 'idol.x');

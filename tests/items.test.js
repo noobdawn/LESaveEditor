@@ -55,7 +55,7 @@ test('default rolls are midpoint and invalid new features cannot silently disapp
   assert.equal(item.data[12], 0);
   assert.throws(() => encodePlannerItem({ id: 'IIwBhCY0sg', unknownFutureSystem: 1 }, { containerID: 7 }), { code: 'UNSUPPORTED_ITEM_FEATURE' });
   assert.throws(() => encodePlannerItem({ id: 'IIwBhCY0sg', ir: [300] }, { containerID: 7 }), { code: 'INVALID_ROLL' });
-  assert.throws(() => encodePlannerItem({ id: 'UAwRgrALA7CQ', corrupted: true }, { containerID: 2 }), { code: 'UNSUPPORTED_ITEM_FEATURE' });
+  assert.throws(() => encodePlannerItem({ id: 'UAwRgrALA7CQ', corrupted: 'yes' }, { containerID: 2 }), { code: 'INVALID_ITEM' });
 });
 
 test('opaque items and untouched uint64 progress survive application without mutation', () => {
@@ -183,10 +183,43 @@ test('unique variant pool/count and unsupported seals remain strict and report t
   assert.throws(() => encodePlannerItem({ ...rageRing, sealedAffix: {id: affixId(26), tier: 3} }, {containerID: 10}), {code: 'UNSUPPORTED_ITEM_FEATURE'});
   assert.throws(() => encodePlannerItem({ ...rageRing, affixes: [...rageRing.affixes, {id: affixId(1140), tier: 1}] }, {containerID: 10}), {code: 'INVALID_UNIQUE_VARIANT'});
   const original = {savedItems: [{containerID: 1, data: [99,1,2], opaque: true}]}, before = stringify(original);
-  assert.throws(() => applyPlannerItems(original, {equipment: {ring1: {...rageRing, ruined: true}}}, {idols: false, blessings: false}), error => {
+  assert.throws(() => applyPlannerItems(original, {equipment: {ring1: {...rageRing, ruined: 'unsupported'}}}, {idols: false, blessings: false}), error => {
     assert.equal(error.details.path, 'equipment.ring1'); assert.equal(error.details.itemId, rageRing.id);
     assert.ok(error.message.split(' / ').every(message => message.includes('equipment.ring1') && message.includes(rageRing.id)));
     return true;
   });
   assert.equal(stringify(original), before);
+});
+
+test('corrupted legendary encodes its corruption seal last with the native high-bit flag', () => {
+  const record = {id: 'UAwRgrALA7CQ', affixes: [{id: affixId(26), tier: 6, r: 40}], corruptedAffix: {id: affixId(86), tier: 4, r: 90}, duplicated: true, tradeable: 0};
+  const encoded = encodePlannerItem(record, {containerID: 2, individualId: 16});
+  assert.equal(encoded.data[1], 128); assert.equal(encoded.data[8], 144); assert.equal(encoded.data[22], 130);
+  assert.deepEqual(encoded.data.slice(23), [80,26,40,48,86,90]);
+  const decoded = decodeSavedItem(encoded);
+  assert.deepEqual(decoded.affixes.map(a=>a.affixId), [26,86]); assert.deepEqual(encodeItemData(decoded), encoded.data);
+  assert.throws(()=>encodePlannerItem({...record, ww: 2}, {containerID: 2}), {code: 'INVALID_ITEM_FEATURE'});
+  assert.throws(()=>encodePlannerItem({...record, tradeable: 'yes'}, {containerID: 2}), {code: 'INVALID_ITEM'});
+});
+
+test('primordial and ordinary seals retain separate ordered blocks and original tiers', () => {
+  const record = {id: baseId(2,2), sealedAffix: {id: affixId(26),tier:3,r:11}, corruptedAffix: {id:affixId(32),tier:4,r:22},
+    primordialAffix: {id:affixId(86),tier:8,r:33}, affixes:[{id:affixId(70),tier:5,r:44}], ruined: 1};
+  const encoded=encodePlannerItem(record,{containerID:7,individualId:16});
+  assert.equal(encoded.data[8],176); assert.equal(encoded.data[13],196);
+  assert.deepEqual(encoded.data.slice(14),[32,26,11,48,32,22,112,86,33,64,70,44]);
+  assert.deepEqual(encodeItemData(decodeSavedItem(encoded)),encoded.data);
+  assert.throws(()=>encodePlannerItem({...record,primordialAffix:{id:affixId(86),tier:7}},{containerID:7}),{code:'INVALID_PRIMORDIAL_AFFIX'});
+});
+
+test('offline item application removes MG restrictions while preserving CoF and untouched inventory', () => {
+  const inventory=encodePlannerItem({id:'UAwRgrALA7CQ',faction:[1,5]},{containerID:1,individualId:17});
+  const original={savedItems:[inventory]};
+  const build={equipment:{head:{id:'UAwRgrALA7CQ',faction:[1,5],tradeable:1},chest:{id:'UAzCMIDiA',faction:[0,4]}}};
+  const result=applyPlannerItems(original,build,{idols:false,blessings:false});
+  assert.equal(result.data.savedItems.find(item=>item.containerID===2).data[8],128);
+  assert.equal(result.data.savedItems.find(item=>item.containerID===3).data[8],132);
+  assert.equal(stringify(result.data.savedItems[0]),stringify(inventory));
+  assert.ok(result.warnings.some(message=>message.includes('商人公会')));
+  assert.deepEqual(original.savedItems,[inventory]);
 });

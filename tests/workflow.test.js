@@ -121,7 +121,7 @@ test('a share created from an imported save can sync faction-restricted gear thr
   assert.equal(flow.prepareReview(), true, flow.state.error?.message);
   flow.state.acknowledged = true;
   const downloaded = parseSave(flow.downloads()[0].text, flow.downloads()[0].name);
-  for (const [container, flags] of [[2, 132], [10, 133], [9, 197]]) {
+  for (const [container, flags] of [[2, 132], [10, 133], [9, 128]]) {
     const item = downloaded.data.savedItems.find(item => Number(item.containerID) === container);
     assert.equal(Number(item.data[8]), flags);
     assert.ok(decodeSavedItem(item).implicitRolls.every(roll => roll === 255));

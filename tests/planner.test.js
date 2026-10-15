@@ -256,3 +256,23 @@ test('optionally imports into a local backed-up character without touching its f
   assert.equal(Number(reparsed.data.savedCharacterTree.unspentPoints), 1);
   assert.equal(readFileSync(path, 'utf8'), text);
 });
+
+test('live-profile base skill levels and omitted versions preserve validated bonus allocations without raising base XP', () => {
+  const profile=structuredClone(publicBuild); profile.data.fromSaveFile=2;
+  delete profile.data.charTree.version;
+  for(const tree of profile.data.skillTrees){delete tree.version;tree.level=20;}
+  const result=applyPlannerBuild(save(),profile,{level:true});
+  assert.equal(Number(result.data.savedCharacterTree.version),4);
+  const skill=result.data.savedSkillTrees.find(t=>t.treeID==='ss37kl');
+  assert.equal(skill.nodePoints.reduce((a,b)=>a+Number(b),0),27);assert.equal(Number(skill.unspentPoints),0);
+  assert.ok(result.warnings.some(message=>message.includes('未提供树版本')));
+  assert.ok(result.warnings.some(message=>message.includes('27 级')));
+  const declared=structuredClone(profile);declared.data.fromSaveFile=0;
+  assert.throws(()=>applyPlannerBuild(save(),declared,{level:true}),{code:'INVALID_SKILL_POINTS'});
+  const invalid=structuredClone(profile);invalid.data.charTree.selected[250]=1;
+  assert.throws(()=>applyPlannerBuild(save(),invalid,{level:true}),{code:'INCOMPATIBLE_TREE'});
+});
+
+test('public API build-not-found envelopes remain distinct from malformed build payloads', () => {
+  assert.throws(()=>normalizePlannerBuild({code:3,error:'Build not found'}),{code:'BUILD_NOT_FOUND'});
+});

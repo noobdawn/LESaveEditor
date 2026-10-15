@@ -75,6 +75,7 @@ function checkObject(value, depth = 0) {
 /** Keep LET's documented-by-observation payload intact; this adapter never executes site JS. */
 export function normalizePlannerBuild(raw, { id = null, sourceUrl = null } = {}) {
   if (!object(raw)) fail('INVALID_BUILD', '服务器未返回配装数据 / The server did not return a build.');
+  if (raw.code === 3 && raw.error === 'Build not found') fail('BUILD_NOT_FOUND', '原站未找到此配装，请重新从角色页面生成分享链接 / The source site could not find this build. Generate a new share URL from the character page.');
   checkObject(raw);
   const data = object(raw.data) ? raw.data : raw;
   if (!object(data.bio) || !object(data.equipment) || !Array.isArray(data.idols) || !object(data.charTree) || !Array.isArray(data.skillTrees)) {
@@ -172,6 +173,12 @@ function validateCurrentTree(selected, schema, { mastery, passive = false, field
 }
 
 function currentTreeVersion(sourceVersion, currentVersion, warnings, field) {
+  // Profile-derived public builds omit tree versions. Nodes and prerequisites
+  // have already passed current-game validation before this function is called.
+  if (sourceVersion == null) {
+    warnings.push(`${field}: 原配装未提供树版本，校验当前节点后写入版本 ${currentVersion} / The source omitted its tree version; validated current nodes before writing the current version.`);
+    return currentVersion;
+  }
   const version = integer(sourceVersion, 0, 65535, `${field}.version`);
   if (version > currentVersion) fail('FUTURE_TREE_VERSION', `配装技能树比本工具数据更新 / Build tree is newer than this tool: ${field}`);
   if (version < currentVersion) warnings.push(`${field}: 已按当前节点规则校验并更新树版本 ${version} → ${currentVersion} / Validated against current node rules and updated tree version.`);
@@ -275,15 +282,18 @@ export function applyPlannerBuild(saveData, build, options = {}) {
       const nodes = validateCurrentTree(selected, schema, { field: tree.treeID });
       const level = integer(tree.level, 1, 255, `${tree.treeID}.level`);
       const spent = sum(selected.values());
-      if (spent > level) fail('INVALID_SKILL_POINTS', '技能分配点数超过配装技能等级 / Allocated skill points exceed build skill level.', { treeID: tree.treeID });
+      // Live profile exports (fromSaveFile=2) store the base XP level while
+      // selected nodes already include equipment/passive bonus levels.
+      const allocatedLevel = source.fromSaveFile === 2 ? Math.max(level, spent) : level;
+      if (spent > allocatedLevel) fail('INVALID_SKILL_POINTS', '技能分配点数超过配装技能等级 / Allocated skill points exceed build skill level.', { treeID: tree.treeID });
       const version = currentTreeVersion(tree.version, schema.version, warnings, tree.treeID);
       const previous = data.savedSkillTrees.find(t => t.treeID === tree.treeID);
       const xpNeeded = gameData.skillXpThresholds[Math.min(level, 20) - 1];
       const previousXp = previous ? integer(previous.xp, 0, 2147483647, 'savedSkillTrees.xp') : 0;
-      if (level > 20) warnings.push(`${tree.treeID}: ${level} 级包含装备或天赋额外等级；游戏会按实际加成重算 / Skill levels above 20 require the actual equipment or passive bonuses.`);
+      if (allocatedLevel > 20) warnings.push(`${tree.treeID}: ${allocatedLevel} 级包含装备或天赋额外等级；游戏会按实际加成重算 / Skill levels above 20 require the actual equipment or passive bonuses.`);
       return {
         ...(previous ?? {}), treeID: tree.treeID, slotNumber: slot, xp: Math.max(previousXp, xpNeeded), version,
-        ...nodes, unspentPoints: level - spent, nodesTaken: null, abilityXP: 0,
+        ...nodes, unspentPoints: allocatedLevel - spent, nodesTaken: null, abilityXP: 0,
       };
     });
     set('savedSkillTrees', trees, 'skills');
