@@ -16,3 +16,5 @@ Package license texts are available in the installed dependencies. The static bu
 The public regression fixture is the user-supplied build `om6w3Ypq`. Tests use synthetic saves; optional real-save tests read ignored local copies. No private save belongs in the repository.
 
 The runtime decodes the compressed item identifiers directly and validates them against the extracted game catalog. It does not depend on copied planner JavaScript or a manually maintained website ID mapping table.
+
+The world editor includes selected timeline limits, faction rank costs, and short English/Chinese names extracted from the same installation. The tutorial GIF is supplied by the repository owner and demonstrates LastEpochTools' native offline-character import and share workflow; its original-site interface and game artwork remain the property of their respective owners.

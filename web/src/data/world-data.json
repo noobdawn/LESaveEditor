@@ -1,0 +1,292 @@
+{
+  "gameBuildHash": "8dfd6929fe2d10f2e77b7ed4c8e6910f49b2736b",
+  "gameVersion": "1.5.2.1",
+  "timelines": {
+    "9": {
+      "name": {
+        "en": "The Age of Winter",
+        "zh": "寒冬纪元"
+      },
+      "difficulties": [
+        {
+          "level": 90,
+          "maxStability": 1000,
+          "minCorruption": 0,
+          "maxCorruption": 50
+        },
+        {
+          "level": 100,
+          "maxStability": 1800,
+          "minCorruption": 100,
+          "maxCorruption": 2147483647
+        }
+      ]
+    },
+    "7": {
+      "name": {
+        "en": "Reign of Dragons",
+        "zh": "巨龙君临"
+      },
+      "difficulties": [
+        {
+          "level": 85,
+          "maxStability": 900,
+          "minCorruption": 0,
+          "maxCorruption": 50
+        },
+        {
+          "level": 100,
+          "maxStability": 1700,
+          "minCorruption": 100,
+          "maxCorruption": 2147483647
+        }
+      ]
+    },
+    "1": {
+      "name": {
+        "en": "Fall of the Outcasts",
+        "zh": "流亡者的陨落"
+      },
+      "difficulties": [
+        {
+          "level": 62,
+          "maxStability": 500,
+          "minCorruption": 0,
+          "maxCorruption": 50
+        },
+        {
+          "level": 100,
+          "maxStability": 1600,
+          "minCorruption": 100,
+          "maxCorruption": 2147483647
+        }
+      ]
+    },
+    "10": {
+      "name": {
+        "en": "Spirits of Fire",
+        "zh": "烈焰魂灵"
+      },
+      "difficulties": [
+        {
+          "level": 90,
+          "maxStability": 1000,
+          "minCorruption": 0,
+          "maxCorruption": 50
+        },
+        {
+          "level": 100,
+          "maxStability": 1800,
+          "minCorruption": 100,
+          "maxCorruption": 2147483647
+        }
+      ]
+    },
+    "6": {
+      "name": {
+        "en": "Fall of the Empire",
+        "zh": "帝国陨落"
+      },
+      "difficulties": [
+        {
+          "level": 82,
+          "maxStability": 800,
+          "minCorruption": 0,
+          "maxCorruption": 50
+        },
+        {
+          "level": 100,
+          "maxStability": 1700,
+          "minCorruption": 100,
+          "maxCorruption": 2147483647
+        }
+      ]
+    },
+    "2": {
+      "name": {
+        "en": "The Stolen Lance",
+        "zh": "被盗长矛"
+      },
+      "difficulties": [
+        {
+          "level": 66,
+          "maxStability": 500,
+          "minCorruption": 0,
+          "maxCorruption": 50
+        },
+        {
+          "level": 100,
+          "maxStability": 1600,
+          "minCorruption": 100,
+          "maxCorruption": 2147483647
+        }
+      ]
+    },
+    "8": {
+      "name": {
+        "en": "The Last Ruin",
+        "zh": "最后废墟"
+      },
+      "difficulties": [
+        {
+          "level": 90,
+          "maxStability": 1000,
+          "minCorruption": 0,
+          "maxCorruption": 50
+        },
+        {
+          "level": 100,
+          "maxStability": 1800,
+          "minCorruption": 100,
+          "maxCorruption": 2147483647
+        }
+      ]
+    },
+    "3": {
+      "name": {
+        "en": "The Black Sun",
+        "zh": "黑暗太阳"
+      },
+      "difficulties": [
+        {
+          "level": 70,
+          "maxStability": 550,
+          "minCorruption": 0,
+          "maxCorruption": 50
+        },
+        {
+          "level": 100,
+          "maxStability": 1600,
+          "minCorruption": 100,
+          "maxCorruption": 2147483647
+        }
+      ]
+    },
+    "4": {
+      "name": {
+        "en": "Blood, Frost, and Death",
+        "zh": "鲜血、霜冻、死亡"
+      },
+      "difficulties": [
+        {
+          "level": 74,
+          "maxStability": 600,
+          "minCorruption": 0,
+          "maxCorruption": 50
+        },
+        {
+          "level": 100,
+          "maxStability": 1600,
+          "minCorruption": 100,
+          "maxCorruption": 2147483647
+        }
+      ]
+    },
+    "5": {
+      "name": {
+        "en": "Ending the Storm",
+        "zh": "终结风暴"
+      },
+      "difficulties": [
+        {
+          "level": 78,
+          "maxStability": 750,
+          "minCorruption": 0,
+          "maxCorruption": 50
+        },
+        {
+          "level": 100,
+          "maxStability": 1700,
+          "minCorruption": 100,
+          "maxCorruption": 2147483647
+        }
+      ]
+    }
+  },
+  "factions": {
+    "2": {
+      "name": {
+        "en": "Forgotten Knights",
+        "zh": "遗忘骑士团"
+      },
+      "maxRank": 10,
+      "reputationPerRank": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "rankFromHarbingerProgress": true
+    },
+    "1": {
+      "name": {
+        "en": "Merchant's Guild",
+        "zh": "商人公会"
+      },
+      "maxRank": 12,
+      "reputationPerRank": [
+        1,
+        900,
+        2400,
+        8000,
+        20000,
+        40000,
+        70000,
+        110000,
+        180000,
+        320000,
+        500000,
+        800000
+      ],
+      "rankFromHarbingerProgress": false
+    },
+    "3": {
+      "name": {
+        "en": "The Woven",
+        "zh": "被编织者"
+      },
+      "maxRank": 10,
+      "reputationPerRank": [
+        1,
+        1000,
+        2500,
+        5000,
+        10000,
+        17500,
+        30000,
+        50000,
+        75000,
+        100000
+      ],
+      "rankFromHarbingerProgress": false
+    },
+    "0": {
+      "name": {
+        "en": "Circle of Fortune",
+        "zh": "命运之环"
+      },
+      "maxRank": 12,
+      "reputationPerRank": [
+        1,
+        900,
+        2400,
+        8000,
+        20000,
+        40000,
+        70000,
+        110000,
+        180000,
+        320000,
+        500000,
+        800000
+      ],
+      "rankFromHarbingerProgress": false
+    }
+  }
+}

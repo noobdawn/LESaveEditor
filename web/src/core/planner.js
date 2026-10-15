@@ -5,7 +5,7 @@ import gameData from '../data/planner-game-data.js';
 const HOSTS = new Set(['www.lastepochtools.com', 'lastepochtools.com']);
 const LANGUAGES = new Set(['en', 'zh', 'de', 'es', 'fr', 'ja', 'ko', 'pl', 'pt', 'ru']);
 const MAX_RESPONSE = 2 * 1024 * 1024;
-const DEFAULT_OPTIONS = { equipment: true, idols: true, blessings: true, passives: true, skills: true, skillBar: true, class: false, level: false, weaverTree: false };
+const DEFAULT_OPTIONS = { equipment: true, idols: true, blessings: true, passives: true, skills: true, skillBar: true, class: false, level: false, weaverTree: false, maxRolls: false };
 const own = (object, key) => object != null && Object.hasOwn(object, key);
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 

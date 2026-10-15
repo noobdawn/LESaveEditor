@@ -161,7 +161,7 @@ function nextIndividualId(usedIds) {
 }
 
 /** Convert an observed LET item record to the current game's saved item wrapper. */
-export function encodePlannerItem(item, { containerID, inventoryPosition = { x: 0, y: 0 }, usedIds, individualId } = {}) {
+export function encodePlannerItem(item, { containerID, inventoryPosition = { x: 0, y: 0 }, usedIds, individualId, maxRolls = false } = {}) {
   const identity = resolvePlannerItemId(item?.id);
   const allowedFields = new Set(['id', 'affixes', 'ir', 'ur', 'x', 'y', 'lp', 'legendaryPotential', 'ww', 'wt', 'sealedAffix', 'corruptedAffix', 'corrupted', 'ruined']);
   for (const key of Object.keys(item)) if (!allowedFields.has(key)) fail('UNSUPPORTED_ITEM_FEATURE', `尚未验证物品字段 / Unverified item field: ${key}`);
@@ -206,6 +206,12 @@ export function encodePlannerItem(item, { containerID, inventoryPosition = { x: 
       if (identity.baseTypeId < 25 || identity.baseTypeId > 33) fail('INVALID_ITEM_FEATURE', 'Only idols can have Weaver’s Touch.');
       descriptor.potentialByte = int(item.wt, 0, 14, 'weaversTouch');
     }
+  }
+  // Validate the supplied item first; maximizing cannot conceal invalid rolls.
+  if (maxRolls) {
+    descriptor.implicitRolls.fill(255);
+    descriptor.uniqueRolls?.fill(255);
+    descriptor.affixes.forEach(affix => { affix.roll = 255; });
   }
   return { itemData: null, data: encodeItemData(descriptor), inventoryPosition: {
     x: int(inventoryPosition.x, 0, 255, 'inventoryPosition.x'), y: int(inventoryPosition.y, 0, 255, 'inventoryPosition.y'),
@@ -270,7 +276,7 @@ export function applyPlannerItems(save, build, options = {}) {
           weapon1: [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 23, 24], weapon2: [5, 6, 7, 8, 9, 10, 11, 17, 18, 19] };
         if (!allowed[slot].includes(base)) fail('INVALID_EQUIPMENT_SLOT', `The item does not fit slot ${slot}.`);
       }
-      replacements.set(containerID, item?.id ? [encodePlannerItem(item, { containerID, usedIds })] : []);
+      replacements.set(containerID, item?.id ? [encodePlannerItem(item, { containerID, usedIds, maxRolls: options.maxRolls })] : []);
     }
   }
   if (options.idols !== false) {
@@ -288,7 +294,7 @@ export function applyPlannerItems(save, build, options = {}) {
         if (cells.has(key)) fail('OVERLAPPING_IDOLS', 'Planner idols overlap.');
         cells.add(key);
       }
-      return encodePlannerItem(item, { containerID: 29, inventoryPosition: { x, y }, usedIds });
+      return encodePlannerItem(item, { containerID: 29, inventoryPosition: { x, y }, usedIds, maxRolls: options.maxRolls });
     });
     replacements.set(29, idols);
   }
@@ -298,7 +304,7 @@ export function applyPlannerItems(save, build, options = {}) {
       const item = typeof value === 'string' ? { id: value } : value;
       const containerID = BLESSING_CONTAINERS[timeline - 1];
       if (item?.id && resolvePlannerItemId(item.id).baseTypeId !== 34) fail('INVALID_BLESSING', 'A blessing slot contains a non-blessing.');
-      replacements.set(containerID, item?.id ? [encodePlannerItem(item, { containerID, usedIds })] : []);
+      replacements.set(containerID, item?.id ? [encodePlannerItem(item, { containerID, usedIds, maxRolls: options.maxRolls })] : []);
     }
   }
   if (replacements.size) {

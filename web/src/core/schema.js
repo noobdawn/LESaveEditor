@@ -104,6 +104,7 @@ export function getEditableFields(document) {
           if (key === 'rank' && !metadata) continue;
           add(faction, key, ['factions', id], text(`${factionNamesZh[id] ?? `阵营 ${id}`} · ${zh}`, `${metadata?.name ?? `Faction ${id}`} · ${en}`), 'factions', key === 'rank' ? { max: String(metadata.maxRank) } : {});
         }
+        if (id === '2') add(faction?.factionSpecific, 'currentprogression', ['factions', id, 'factionSpecific'], text('遗忘骑士团 · 先兆进度', 'Forgotten Knights · Harbinger progression'), 'factions', { max: '10' });
       }
     }
     if (Array.isArray(data.dungeonCompletion)) data.dungeonCompletion.forEach((dungeon, index) => {

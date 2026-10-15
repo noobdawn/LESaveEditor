@@ -2,6 +2,20 @@
 
 网页运行只需要静态文件。这里的 Python 脚本供开发者在游戏更新后重新核对数据，最终用户不需要安装 Python。
 
+## 世界线与阵营编辑
+
+`extract-world-data.py` 从同一安装的 `PermaLoad.bundle` 提取 10 条世界线的普通／强化稳定值及腐化边界、4 个阵营的逐阶声望要求；从 Addressables 的 Common、UI 中英文字符串表只选取相关名称。当前构建哈希不匹配时拒绝生成。
+
+```powershell
+python tools/extract-world-data.py --game-dir 'E:\SteamLibrary\steamapps\common\Last Epoch' --library-dir '.local/research/pylibs' --out '.local/research/world-data.json'
+```
+
+复核后替换 `web/src/data/world-data.json`。声望规则除资产数值外，已读取同一构建原生方法：`Faction.get_TotalReputation`（RVA `0x20CB0A0`）跳过第 0 项加入要求，再累计已完成各阶，加上保存的本阶进度；`Faction.LoadFactionStashData`（`0x20C9990`）分别读取 rank、reputation、favor。因此选择新阶级时保存 rank 与本阶 reputation=0，不能把累计声望写进 reputation。
+
+遗忘骑士团重写了 rank 属性：`ForgottenKnights.get_Rank`（`0x20CDB00`）读取 `HarbingersProgress.CurrentProgression`；setter（`0x20CDB30`）设置同一进度。仓库的 `factionSpecific.currentprogression` 会在 `LoadFactionSpecificStashData`（`0x20CD3E0`）载入时恢复，所以修改该阵营阶级必须同时更新已有进度字段。工具不会创建缺失字段或补写先兆击败名单。
+
+这些地址及规则仅对应当前构建。更新游戏后须重新核对，不能只替换数值表。
+
 ## 天赋、技能与分享链接
 
 `extract-planner-data.py` 从安装目录中的 `PermaLoad.bundle` 读取当前天赋节点、前置条件、职业技能和解锁要求。技能经验表来自同一安装版本的 Cpp2IL `DiffableCs/LE/_PrivateImplementationDetails_.cs`。需要 Python 和 UnityPy；`--library-dir` 可指定已有的本地依赖目录。

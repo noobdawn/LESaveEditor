@@ -2,107 +2,80 @@
 
 [在线使用](https://noobdawn.github.io/LESaveEditor/) · [源代码](https://github.com/noobdawn/LESaveEditor)
 
-在 [LastEpochTools](https://www.lastepochtools.com/planner/zh/) 配装，粘贴分享链接，在浏览器中将构筑应用到自己的离线存档。支持右上角中英文切换，可部署为 GitHub Pages 静态网站。普通使用不需要 Python、油猴脚本或后端。
+在 LastEpochTools 配装，将分享链接同步到离线角色存档，再按需修改世界线和阵营。网页在浏览器中处理文件，支持右上角中英文切换，无需 Python、油猴或后端。
 
-当前数据基准：**游戏 1.5.2.1（内部版本 1.5.2.2）、Steam build 25816319**。接受 1.5.x 配装，并逐项验证当前物品、节点和技能；未来游戏更新仍需复核数据。
+当前数据基准：**游戏 1.5.2.1 / 内部版本 1.5.2.2，Steam build 25816319**。接受 1.5.x 配装，并按当前游戏目录验证物品、天赋与技能。
 
-## 使用
+## 使用流程
 
-1. 退出游戏，另外备份 `Saves` 文件夹。
-2. 在原站完成配装，点击“保存 / 分享”取得最新链接。
-3. 载入角色文件 `1CHARACTERSLOT_BETA_*`。要编辑金币、材料、阵营时，同时载入对应赛季的 `STASH_CYCLE_*`；仓库页名称在 `STASH_CYCLE_*_TAB_*` 中。
-4. 拖入角色后会直接显示“装备编辑”，可以选择当前装备、神像、祝福或背包物品，单独修改已验证的属性。需要应用原站构筑时，粘贴链接，进入“配装同步”，选择角色与同步范围，再应用。也可以仅使用“存档编辑”。
-5. 检查“修改预览”，下载 ZIP。`modified/` 只包含改过的存档，`originals/` 包含所有载入文件的原文备份。
-6. 保持游戏关闭，将 `modified/` 中需要的文件复制到原 `Saves` 目录，保留原始备份后进入离线角色检查。
+1. **配装链接**：粘贴 LastEpochTools 的“保存／分享”链接。修改已有角色时，点击“我想修改自己的存档怎么办？”查看 GIF 教学，先将角色通过原站“导入”，调整后取得新链接。
+2. **配装同步**：选择装备（含祭坛）、神像、祝福、被动天赋、技能专精与技能栏。**等级、职业和专精始终按配装同步**，没有关闭选项。可开启“词缀最大 Roll 值”。
+3. **上传存档**：先退出游戏并备份，再载入一个 `1CHARACTERSLOT_BETA_*` 角色文件；要修改阵营，同时载入界面提示的对应 `STASH_CYCLE_*` 仓库文件。
+4. **世界编辑**：下拉选择存档已有的普通／强化世界线，填写稳定值和腐化值；可快捷增加 1000 稳定值或 50 腐化。下拉选择已有阵营，调整阶级与恩惠。
+5. **修改预览**：检查角色、世界线、阵营变化，以及可展开的物品、天赋和技能明细。勾选“我已了解”后，分别下载修改过的角色与仓库文件。**下载为游戏原生文件，不打包。**
 
-Windows 存档位置：
+保持游戏关闭，将下载文件替换到原存档目录中的同名文件，保留原始备份，再进入离线角色检查。浏览器可能为重复下载添加 `(1)` 后缀，放回时须恢复页面列出的原文件名。
+
+Windows 存档位置（上传和下载页也会显示）：
 
 ```text
 %USERPROFILE%\AppData\LocalLow\Eleventh Hour Games\Last Epoch\Saves
 ```
 
-工具不会直接写入游戏目录。选择文件只是交给浏览器读取；存档不发往服务器或 LastEpochTools。只有分享码用于请求公开配装接口。关闭或刷新会清空工作区；仅语言偏好存于本机。原件与 `.bak` / `.json` 副本支持导入，但同一目标存档不能同时载入多个副本。
+选择文件只交给浏览器本机读取，存档不上传至服务器或 LastEpochTools。只有配装分享码用于请求公开接口。关闭或刷新会清空会话；仅语言偏好保存在本机。
 
-## 当前功能
+## 世界编辑规则
 
-| 范围 | 支持内容 |
-| --- | --- |
-| 配装 | 装备与神像祭坛、神像布局、祝福；普通、暗金、套装和传奇物品；已验证的封印/腐化词缀、传奇潜能及 Weaver 属性 |
-| 单件编辑 | 读取原存档的物品与词缀名称，修改已有属性 Roll、词缀层级和支持的潜能；保留物品身份及未改的字节 |
-| 技能 | 被动天赋、5 个技能专精、技能栏；按当前游戏数据验证节点上限、前置、职业及技能解锁 |
-| 角色 | 名称、等级、经验、未分配天赋/技能点；可选择从配装同步职业、专精和等级 |
-| 进度 | 已有时间线的稳定值、腐化，以及已有地下城/竞技场记录和统计 |
-| 资源 | 金币、远古骨骸、已有碎片、材料、钥匙、编织回响和共鸣数量 |
-| 阵营 | 已有阵营的经验、好感和等级，使用当前游戏的等级上限 |
-| 文件 | 多存档、字段搜索、修改预览、单文件撤销、原文备份、ZIP 下载 |
+- 世界线名称来自当前游戏中英文表；只编辑存档已有记录，不生成缺失或未开启的世界线。普通世界线腐化范围为 0–50，强化世界线最低为 100。稳定值上限按各世界线和难度读取，快捷增加会停在上限。
+- 命运之环与商人公会上限 **12 阶**，最高阶累计声望门槛为 **2,051,300**；被编织者上限 **10 阶**，最高阶累计声望门槛为 **291,000**。每阶要求来自当前游戏的 `FactionData`，完整对应表可在界面展开查看。
+- 存档 `reputation` 保存的是**本阶内进度**，不是累计声望。变更阶级会把本阶进度设为 0，同时更新角色和对应仓库；仅修改恩惠或保持同阶时保留原声望进度。
+- 遗忘骑士团上限 **10 阶**，由先兆进度决定。变更阶级时同时更新已有的 `currentprogression`，保留已击败先兆记录；此阵营没有恩惠输入。
+- 阵营修改需要同赛季、同硬核模式的仓库，且只修改角色与仓库共有的已验证记录。独狼模式仓库关联暂未验证，可仅上传角色同步配装和修改世界线。
 
-资源和技能专有名称目前使用游戏英文数据，界面与字段说明支持中英文。等级、经验、阵营数值分别编辑；游戏可能按自身规则重算关联值。记录字段不会自动生成缺失的剧情、任务或时间线结构。
+## 同步边界
 
-### 存档 → 原站配装 → 存档
+- 选中的装备、神像、祝福范围整体替换，原物品不移入背包。未选范围和背包保留。
+- “最大 Roll”只应用于本次同步的物品，包括固有、暗金、普通、封印及腐化词缀；保持词缀层级、传奇潜能和 Weaver 属性。关闭时使用配装数值，省略的 Roll 使用中间值。
+- 新生成装备锻造潜能为 0，设为不可交易。未知物品功能、毁坏物品及部分特殊暗金会阻止同步。
+- 织网者树保留存档原值，暂不导入。技能大于 20 级时仍依赖实际装备或天赋加成。
+- 职业变更必须同步被动天赋、技能专精和技能栏；天赋点按原存档与等级差验证，不自动授予任务奖励。
+- 界面和世界线、阵营名称支持中英文；部分物品和技能专有名称使用英文游戏数据。
+- 已验证当前游戏原生逻辑、存档副本无损读写、公开配装样例和浏览器下载流程。**尚未在游戏内载入生成存档验收。**
 
-LastEpochTools 原生支持导入离线角色文件。在“装备编辑”点击“导出到原站配装”，然后在原站点“导入”，选择下载的角色文件。调整后在原站保存/分享，带着新链接回到本工具同步。已有的原角色文件也可以直接通过原站导入。
+## 本地运行与 GitHub Pages
 
-“查看存档配装概览”在本工具内反向读取当前角色，是只读概览。分享格式不能保留全部存档专属信息，所以概览不会被当作普通分享构筑重新覆盖存档。未知物品明确显示为不支持，保留原始内容。外站自动填充没有已确认的公开接口；工具不会声称已将内容写入 LastEpochTools。
-
-只想调一件装备时，直接使用单件编辑，可以保留它的个体编号、归属标记、其余属性与其他物品。**Roll 0–255 表示属性在自身最小值到最大值之间的位置，约对应 0–100%，不是属性的绝对面板数值。**要按实际属性数值完整配装，可使用原站的“实际值”显示。
-
-转换边界：
-
-- 织网者树保留原值，暂不导入。未知物品功能、毁坏物品、部分特殊暗金及未验证字段会阻止该次同步，不会悄悄丢弃。
-- 分享数据未指定的物品 roll 使用中间值，新生成装备锻造潜能为 0，并设为不可交易。以页面同步提示为准。
-- 勾选的装备、神像、祝福范围整体替换；原来穿着的物品不会移入背包，原始备份仍有它们。未勾选范围及背包等其他容器保留。
-- 职业变更必须同时同步天赋、专精和技能栏。工具校验可用天赋点，不伪造任务奖励；低等级角色可能需要先调整等级或点数。
-- 当前验证包括游戏原生序列化逻辑、真实存档副本字节往返、公开配装样例及浏览器流程。**尚未通过启动游戏载入生成存档进行验证。**
-
-## 本地运行与构建
-
-使用 Node.js 24：
-
-Windows 可以直接双击 `Start-Workshop.cmd`，它会安装缺少的依赖并打开网页；使用期间保持窗口开启。也可以执行：
+使用 Node.js 24。Windows 可双击 `Start-Workshop.cmd`，保持启动窗口开启；或执行：
 
 ```sh
 npm ci
 npm run dev
 ```
 
-打开终端显示的本地地址。验证与构建：
+测试与构建：
 
 ```sh
 npm test
 npm run build
-npm run preview
 ```
 
-发布文件在 `dist/`，资源使用相对路径，支持 GitHub 项目子路径。请通过 HTTP 服务访问，不要直接双击 `index.html`。
+构建输出位于 `dist/`，资源路径支持 GitHub 项目子目录。通过 HTTP 服务访问，不要直接打开 `index.html`。仓库 Pages 的 Source 选择 **GitHub Actions**；推送 `main` / `master` 后，工作流会先测试、构建，再部署。也可以手动运行部署工作流。
 
-## GitHub Pages
+## 维护与来源
 
-仓库已包含测试与部署工作流：
+- `web/src/core/workflow.js`：五步会话、强制角色同步、确认与原生文件导出。
+- `web/src/core/world.js` 与 `web/src/data/world-data.json`：世界线、阵营联动校验与本地化事实。
+- `web/src/core/save.js`：EPOCH + JSON 无损读写，保留未知字段和大整数。
+- `web/src/core/items.js`：当前第 6 版物品字节编码，外层 `formatVersion: 2`。
+- `tools/`：游戏更新后的数据提取与复核工具，见 [维护说明](tools/README.md)。Python 仅用于维护。
 
-1. 在 **Settings → Pages → Build and deployment → Source** 选择 **GitHub Actions**。
-2. 推送到 `main` / `master`，或在 Actions 中手动运行 **Deploy offline workshop to GitHub Pages**。
-3. 成功后的访问地址显示在部署任务中。
-
-参考 [GitHub 官方说明](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages)。仅发布 `dist/`；`.local/`、私人测试存档、游戏文件和研究缓存都被排除；公开配装样例保留在测试中。
-
-## 维护
-
-- `web/src/core/save.js`：EPOCH + JSON 无损读写、校验、差异与备份；大整数不经普通 JSON 数值转换。
-- `web/src/core/items.js`：第 6 版物品字节编码，外层仍为 `formatVersion: 2`。
-- `web/src/core/planner.js`：公开配装接口、版本与节点检查、选择性同步。
-- `web/src/core/game-item-data.json` 和 `web/src/data/`：当前游戏必要数据事实。
-- `tools/`：数据提取脚本。Python 仅用于维护，不是网站运行依赖。见 [维护说明](tools/README.md)。
-
-旧 Python 工具和油猴脚本已从当前源码移除，历史实现仍可在 Git 提交记录中查看。`tools/` 仅保留当前游戏数据的维护脚本，不参与网页运行。网站未镜像、嵌入或执行原站前端脚本。LastEpochTools 与本项目相互独立，游戏名称及数据归原权利人所有。见 [依赖与数据来源](THIRD_PARTY.md)。
+旧 Python 客户端和油猴脚本已从当前源码移除，历史实现可在 Git 记录中查看。网页未镜像或执行原站前端脚本。LastEpochTools 与本项目相互独立；游戏、名称和数据归原权利人所有。见 [依赖及数据来源](THIRD_PARTY.md)。私人存档、游戏二进制和研究缓存不参与提交与发布。
 
 ## English
 
-Plan on LastEpochTools, import its share URL, then apply the build to an offline save in your browser. Switch languages in the top-right corner. No Python, userscript or backend is needed to use the site.
+Enter a LastEpochTools share URL → select sync options → upload saves → edit timelines and factions → review and download. The tutorial link explains how to import an existing offline character into the original planner and generate a new share URL.
 
-Dropping a character also opens its equipment editor. Adjust a single item’s existing rolls, affix tiers and supported potential fields without rebuilding the whole loadout. Roll values 0–255 describe the position within each stat’s range, not an absolute stat number. To continue in the original planner, export the current character and select it through LastEpochTools’ native Import flow. The local reverse-build overview is read-only because the share format cannot preserve every save-specific property.
+Character level, class and mastery always follow the build. Optional maximum rolls affect only synchronized items. Timeline and faction names use the installed game’s English and Chinese localization. Timeline values respect difficulty-specific caps; faction ranks update the matching character and stash together, using rank-local reputation rather than cumulative totals. Forgotten Knights also updates its existing Harbinger progression.
 
-Load the character and optionally the matching season stash. Choose what to synchronize, review changes and download the ZIP. With the game closed, copy the required files from `modified/` into `Saves`, retaining `originals/`. Selected equipment ranges are replaced; old items remain in the backup, not in the inventory. Other fields and large integers are preserved. Saves never leave the browser; only the public build ID is sent to LastEpochTools.
+Review the changes, acknowledge them, then download each modified save separately with its native filename. No ZIP is produced. Saves stay in the browser. Close the game and back up originals before replacing files in `%USERPROFILE%\AppData\LocalLow\Eleventh Hour Games\Last Epoch\Saves`.
 
-Baseline: **game 1.5.2.1 / internal 1.5.2.2**, v6 items. Equipment, idols, blessings, passives, specializations, action bar, character values, existing resources, factions and progress records are supported. Unknown item features are rejected; the Weaver tree is preserved. Omitted rolls use midpoint values and new items have zero forging potential. Resource and skill proper names currently use English game data. Generated saves have not yet been loaded in the game as an acceptance test.
-
-Use Node.js 24, `npm ci` and `npm run dev` locally. `npm test` and `npm run build` produce a checked static site in `dist/`. For GitHub Pages, choose GitHub Actions in Pages settings and run the included deployment workflow. See [maintenance notes](tools/README.md) for updating game data.
+Baseline: game **1.5.2.1 / internal 1.5.2.2**. Generated saves have not yet been loaded in the game as an acceptance test. Use Node.js 24, `npm ci`, `npm test` and `npm run build`; the included GitHub Actions workflow publishes the static `dist/` output.
