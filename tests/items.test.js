@@ -223,3 +223,20 @@ test('offline item application removes MG restrictions while preserving CoF and 
   assert.ok(result.warnings.some(message=>message.includes('商人公会')));
   assert.deepEqual(original.savedItems,[inventory]);
 });
+
+
+test('full sync without a source altar uses the default grid while idol-only sync keeps altar validation', () => {
+  const altar=encodePlannerItem({id:baseId(41,6)},{containerID:123,individualId:23});
+  const original={savedItems:[altar,{containerID:1,data:[99,1,2],opaque:true}]};
+  const before=stringify(original),idol={id:baseId(25,0),x:5,y:4};
+  const build={equipment:{},idols:[idol]};
+  const synced=applyPlannerItems(original,build,{blessings:false});
+  assert.equal(synced.data.savedItems.some(item=>Number(item.containerID)===123),false);
+  assert.equal(synced.data.savedItems.filter(item=>Number(item.containerID)===29).length,1);
+  assert.ok(synced.warnings.some(message=>message.includes('默认神像布局')));
+  assert.equal(stringify(synced.data.savedItems.find(item=>Number(item.containerID)===1)),stringify(original.savedItems[1]));
+  assert.throws(()=>applyPlannerItems(original,build,{equipment:false,blessings:false}),{code:'BLOCKED_IDOL_CELL'});
+  const equipmentOnly=applyPlannerItems(original,build,{idols:false,blessings:false});
+  assert.equal(stringify(equipmentOnly.data.savedItems.find(item=>Number(item.containerID)===123)),stringify(altar));
+  assert.equal(stringify(original),before);
+});

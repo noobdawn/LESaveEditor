@@ -136,7 +136,7 @@ node --test --test-isolation=none tests/items.test.js tests/planner.test.js
 
 尚未启动游戏完成修改后存档的实际载入验收。未知序列化版本及未验证的新增物品字段会拒绝转换；未选择修改区域中的未知物品保留原数据。已验证的腐化／毁坏标志、原初词缀以及上述固定池暗金现可生成；茧化、没有已验证固定池的预腐化暗金及未知封印结构仍拒绝生成。祭坛校验永久禁用格及重叠，不自动授予任务解锁格。未指定数值使用 LET 默认中间值（字节 128），新物品锻造潜能为 0，不自动改成满值。正式采用新版格式前仍需使用额外备份在对应游戏版本内验收。
 
-## 天梯前 20 位兼容性验证
+## 天梯指定排名范围兼容性验证
 
 `verify-ladder-builds.mjs` 使用从天梯角色页“在构建模拟器中查看”的 DOM 获取的分享码清单，逐人运行正常 Roll 和最大 Roll 两种完整工作流。角色文件只在本机内存应用、预览、导出和重新读取，不写回原文件，不发送给网络。检查身份、天赋技能分配、物品数量／ID／层级／Roll、原初／腐化布局、重复身份、商人公会限制清除，以及背包和世界数据保持不变。公开数据缓存与结果放在 `.local` 或指定的私人输出目录，不提交整份角色配装数据。
 
@@ -144,8 +144,10 @@ node --test --test-isolation=none tests/items.test.js tests/planner.test.js
 node tools/verify-ladder-builds.mjs --manifest '.local/ladder-top20-builds.json' --character '.local/fixtures/1CHARACTERSLOT_BETA_5' --cache '.local/ladder-20' --out '.local/ladder-report'
 ```
 
-清单包含 `profiles` 数组，字段为 `rank`（1–20）、`name`、`className`、`characterUrl`、`buildId`、`plannerUrl`，并记录 `capturedAt`、`source`、赛季、模式与榜单类型。默认复用缓存；加 `--refresh` 才重新请求公开接口。输出 JSON 和 CSV，明确区分 PASS、转换失败和原站数据不可用，不把未获取到配装的角色计为通过。
+清单包含 `profiles` 数组，字段为 `rank`（所选范围内连续名次）、`name`、`className`、`characterUrl`、`buildId`、`plannerUrl`，并记录 `capturedAt`、`source`、赛季、模式与榜单类型。默认复用缓存；加 `--refresh` 才重新请求公开接口。输出 JSON 和 CSV，明确区分 PASS、转换失败和原站数据不可用，不把未获取到配装的角色计为通过。
 
 当前原生物品额外核对：`data[8]` bit 4 腐化、bit 5 毁坏；`data[1]` bit 7 复制来源。普通物品按“普通封印、腐化封印、原初、普通词缀”排序；传奇的腐化封印在末尾，`data[22]` bit 7 标识，与未腐化传奇的剩余 Weaver 位不同（`RebuildID` 的 `0x1206973–0x12069FB`，读取位于 `0x1213231–0x12132A1` 和 `0x1213A47–0x1213A6D`）。原初由词缀 T8 标记读取（`loadAffixFromSerialisation`, `0x1211380`）。生成离线物品始终设置不可交易，并清除 MG 阵营／阶级要求；低层编码器与只读反向映射仍可保留原生位以完成字节核对。
 
 天梯 `fromSaveFile=2` 数据省略树版本，且技能 `level` 保存基础经验等级（通常 20），节点分配包含实际装备／天赋额外等级。导入前仍验证当前游戏节点与前置条件；基础经验按至多 20 级写入，分配保留、额外等级依赖游戏重算。普通手动配装的“分配点数超过声明等级”仍拒绝。
+
+通过 `--from 21 --to 50` 可验证第 21–50 名；默认仍为第 1–20 名。工具要求清单完整覆盖所选连续范围，报告按范围命名，不允许用范围外的角色替代缺失项。

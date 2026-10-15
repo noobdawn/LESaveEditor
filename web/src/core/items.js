@@ -328,9 +328,14 @@ export function applyPlannerItems(save, build, options = {}) {
   if (options.equipment !== false) {
     for (const [slot, containerID] of Object.entries(EQUIPMENT_CONTAINERS)) {
       const item = build.equipment?.[slot];
-      // Missing slots are intentionally emptied, but missing altar remains unchanged
-      // for pre-altar planner payloads; it determines the equipped idol grid.
-      if (slot === 'idol_altar' && !own(build.equipment, slot)) continue;
+      // A full equipment/idol sync must use the source's default grid when no
+      // altar is present. Equipment-only legacy payloads retain the existing altar.
+      if (slot === 'idol_altar' && !own(build.equipment, slot)) {
+        if (options.idols === false) continue;
+        if (data.savedItems.some(item => Number(item.containerID) === 123)) {
+          warnings.push('配装未装备祭坛，已移除原祭坛并使用默认神像布局 / The build has no idol altar; removed the existing altar and used the default idol grid.');
+        }
+      }
       if (item?.id) {
         const base = resolvePlannerItemId(item.id).baseTypeId;
         const allowed = { head: [0], chest: [1], hands: [4], waist: [2], feet: [3], ring1: [21], ring2: [21], amulet: [20], relic: [22], idol_altar: [41],

@@ -9,11 +9,14 @@ import {createWorkflow} from '../web/src/core/workflow.js';
 import {parseSave,serializeSave} from '../web/src/core/save.js';
 import {decodeSavedItem,encodeItemData,resolvePlannerItemId,EQUIPMENT_CONTAINERS,BLESSING_CONTAINERS} from '../web/src/core/items.js';
 import catalog from '../web/src/core/game-item-data.json' with {type:'json'};
-const arg=name=>process.argv[process.argv.indexOf(name)+1];
+const arg=(name,fallback)=>{const index=process.argv.indexOf(name);if(index<0)return fallback;const value=process.argv[index+1];assert.ok(value&&!value.startsWith('--'),`Missing value for ${name}`);return value;};
 for(const required of ['--manifest','--character','--cache','--out'])if(!process.argv.includes(required))throw Error(`Missing ${required}`);
 const manifest=JSON.parse(readFileSync(arg('--manifest'),'utf8'));
-assert.equal(manifest.profiles.length,20,'Exactly the requested top 20 must be included');
-assert.deepEqual(manifest.profiles.map(p=>p.rank),Array.from({length:20},(_,i)=>i+1));
+const from=Number(arg('--from',1)),to=Number(arg('--to',20));
+assert.ok(Number.isSafeInteger(from)&&Number.isSafeInteger(to)&&from>=1&&to>=from&&to<=10000,'Invalid requested rank range');
+assert.equal(manifest.profiles.length,to-from+1,'All requested ranks must be included');
+assert.deepEqual(manifest.profiles.map(p=>p.rank),Array.from({length:to-from+1},(_,i)=>i+from));
+const reportName=from===1&&to===20?'ladder-20':`ladder-${from}-${to}`;
 const cache=resolve(arg('--cache')),out=resolve(arg('--out'));mkdirSync(cache,{recursive:true});mkdirSync(out,{recursive:true});
 const sourceText=readFileSync(arg('--character'),'utf8'), source=parseSave(sourceText,basename(arg('--character')));
 const replaced=new Set([...Object.values(EQUIPMENT_CONTAINERS),29,...BLESSING_CONTAINERS]);
@@ -28,10 +31,14 @@ function records(build){
  for(const [timeline,item]of Object.entries(data.blessings??{})){const record=typeof item==='string'?{id:item}:item;if(record?.id)list.push({container:BLESSING_CONTAINERS[Number(timeline)-1],source:record});}
  return list;
 }
+function requireStep(success,flow,stage){
+ if(success)return;
+ throw Object.assign(new Error(flow.state.error?.message??`Workflow failed: ${stage}`),{code:flow.state.error?.code??'WORKFLOW_FAILED',stage,details:flow.state.error?.details});
+}
 async function verify(build,maxRolls){
- const flow=createWorkflow({fetchBuild:async()=>build});assert.equal(await flow.importBuild(build.sourceUrl),true);
- assert.equal(await flow.addFiles([{name:source.name,size:sourceText.length,text:async()=>sourceText}]),true);flow.setOption('maxRolls',maxRolls);
- assert.equal(flow.synchronize(),true,flow.state.error?.message);assert.equal(flow.prepareReview(),true,flow.state.error?.message);
+ const flow=createWorkflow({fetchBuild:async()=>build});requireStep(await flow.importBuild(build.sourceUrl),flow,'import');
+ requireStep(await flow.addFiles([{name:source.name,size:sourceText.length,text:async()=>sourceText}]),flow,'upload');flow.setOption('maxRolls',maxRolls);
+ requireStep(flow.synchronize(),flow,'synchronize');requireStep(flow.prepareReview(),flow,'review');
  assert.throws(()=>flow.downloads(),{code:'REVIEW_REQUIRED'});flow.state.acknowledged=true;
  const downloads=flow.downloads();assert.equal(downloads.length,1);assert.equal(downloads[0].name,source.outputName);
  const result=parseSave(downloads[0].text,downloads[0].name).data;
@@ -75,15 +82,15 @@ for(const profile of manifest.profiles){
   else build=await fetchPlannerBuild(profile.plannerUrl);
   build.sourceUrl=profile.plannerUrl;writeFileSync(join(cache,profile.buildId+'.json'),JSON.stringify(build));
  }catch(error){results.push({...profile,status:'SOURCE_UNAVAILABLE',error:{code:error.code??error.name,message:error.message}});console.log(profile.rank,profile.name,'SOURCE_UNAVAILABLE',error.code);continue;}
- const modes={};for(const [name,max]of [['normal',false],['maxRolls',true]])try{modes[name]=await verify(build,max);}catch(error){modes[name]={status:'FAIL',code:error.code??error.name,message:error.message};}
+ const modes={};for(const [name,max]of [['normal',false],['maxRolls',true]])try{modes[name]=await verify(build,max);}catch(error){modes[name]={status:'FAIL',code:error.code??error.name,message:error.message,stage:error.stage,details:error.details};}
  const result={...profile,status:Object.values(modes).every(m=>m.status==='PASS')?'PASS':'FAIL',dataVersion:build.dataVersion,modes};results.push(result);console.log(profile.rank,profile.name,result.status,JSON.stringify(modes));
 }
 assert.equal(readFileSync(arg('--character'),'utf8'),sourceText,'Source backup file changed');
 const passed=results.filter(r=>r.status==='PASS'),unavailable=results.filter(r=>r.status==='SOURCE_UNAVAILABLE');
-const report={capturedAt:manifest.capturedAt,verifiedAt:new Date().toISOString(),source:manifest.source,season:manifest.season,type:manifest.type,mode:manifest.mode,gameVersion:catalog.gameVersion,
+const report={capturedAt:manifest.capturedAt,verifiedAt:new Date().toISOString(),source:manifest.source,season:manifest.season,type:manifest.type,mode:manifest.mode,gameVersion:catalog.gameVersion,range:{from,to},
  scope:'In-memory conversion and native-file verification. No in-game loading performed. Source backup was not modified or uploaded.',
- totals:{requested:20,passed:passed.length,sourceUnavailable:unavailable.length,failed:results.filter(r=>r.status==='FAIL').length,successfulConversions:passed.length*2,itemsPerMode:passed.reduce((n,r)=>n+r.modes.normal.items,0),merchantItemsPerMode:passed.reduce((n,r)=>n+r.modes.normal.merchantItems,0)},results};
-writeFileSync(join(out,'ladder-20-results.json'),JSON.stringify(report,null,2));
+ totals:{requested:manifest.profiles.length,passed:passed.length,sourceUnavailable:unavailable.length,failed:results.filter(r=>r.status==='FAIL').length,successfulConversions:passed.length*2,itemsPerMode:passed.reduce((n,r)=>n+r.modes.normal.items,0),merchantItemsPerMode:passed.reduce((n,r)=>n+r.modes.normal.merchantItems,0)},results};
+writeFileSync(join(out,reportName+'-results.json'),JSON.stringify(report,null,2));
 const csv=v=>'"'+String(v??'').replaceAll('"','""')+'"';
-writeFileSync(join(out,'ladder-20-results.csv'),'\ufeff'+[['名次','角色','职业','结果','原始Roll','最大Roll','物品数','商人限制清除','配装链接','备注'],...results.map(r=>[r.rank,r.name,r.className,r.status,r.modes?.normal.status,r.modes?.maxRolls.status,r.modes?.normal.items,r.modes?.normal.merchantItems,r.plannerUrl,r.error?.message??''])].map(row=>row.map(csv).join(',')).join('\r\n'));
+writeFileSync(join(out,reportName+'-results.csv'),'\ufeff'+[['名次','角色','职业','结果','原始Roll','最大Roll','物品数','商人限制清除','配装链接','备注'],...results.map(r=>[r.rank,r.name,r.className,r.status,r.modes?.normal.status,r.modes?.maxRolls.status,r.modes?.normal.items,r.modes?.normal.merchantItems,r.plannerUrl,r.error?.message??Object.entries(r.modes??{}).filter(([,mode])=>mode.status!=='PASS').map(([name,mode])=>name+': '+mode.code+' — '+mode.message).join(' | ')])].map(row=>row.map(csv).join(',')).join('\r\n'));
 console.log('TOTAL',JSON.stringify(report.totals));if(report.totals.failed)process.exitCode=1;
