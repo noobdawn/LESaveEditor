@@ -40,6 +40,9 @@ for item in uniques:
         'cocooned': item['isCocoonedItem'],
         'preCorrupted': item['isPreCorrupted'],
         'specificAffixes': item['dropsSpecificLegendaryAffixes'],
+        **({'specificAffixIds': item['droppableLegendaryAffixes'],
+            'specificAffixCount': item['droppableLegendaryAffixCount']}
+           if item['dropsSpecificLegendaryAffixes'] else {}),
     }
 for item in affixes['singleAffixes'] + affixes['multiAffixes']:
     catalog['affixes'][str(item['affixId'])] = {

@@ -182,12 +182,22 @@ export function encodePlannerItem(item, { containerID, inventoryPosition = { x: 
   }
   // These carry additional semantics that cannot be discarded safely.
   const isUnique = own(identity, 'uniqueId');
+  const unique = isUnique ? catalog.uniques[identity.uniqueId] : null;
+  const variantIds = unique?.specificAffixIds ?? [];
+  const supportsVariants = unique?.specificAffixes && variantIds.length > 0 &&
+    variantIds.every(id => catalog.affixes[id]?.specialType === 7);
+  const sealedAffix = item.sealedAffix ? plannerAffix(item.sealedAffix) : null;
+  // LET stores a fixed-pool FakeUniqueMod variant in sealedAffix. In the game
+  // this is an ordinary affix record, not the rare item's regular-seal flag.
+  const sealedVariant = supportsVariants && sealedAffix && variantIds.includes(sealedAffix.affixId);
   const corrupted = Boolean(item.corrupted || item.corruptedAffix || catalog.bases[identity.baseTypeId].subtypes[identity.subTypeId].corrupted);
-  if (item.ruined || (isUnique && (corrupted || item.sealedAffix))) fail('UNSUPPORTED_ITEM_FEATURE', '毁坏物品及特殊封印暗金尚未验证 / Ruined items and specially sealed uniques require further verification.');
+  if (item.ruined) fail('UNSUPPORTED_ITEM_FEATURE', '毁坏物品写入尚未验证 / Ruined item writing requires further verification.', { field: 'ruined' });
+  if (isUnique && corrupted) fail('UNSUPPORTED_ITEM_FEATURE', '腐化暗金写入尚未验证 / Corrupted unique writing requires further verification.', { field: 'corrupted' });
+  if (isUnique && sealedAffix && !sealedVariant) fail('UNSUPPORTED_ITEM_FEATURE', '此暗金的封印词缀不在已验证变体池中 / This unique sealed affix is not in a verified variant pool.', { field: 'sealedAffix' });
   if (!Array.isArray(item.affixes ?? [])) fail('INVALID_AFFIXES', 'Affixes must be an array.');
   const regularAffixes = (item.affixes ?? []).map(plannerAffix);
-  if (regularAffixes.length > 4) fail('UNSUPPORTED_ITEM_FEATURE', 'More than four regular affixes are not supported.');
-  const affixes = [item.sealedAffix && plannerAffix(item.sealedAffix), item.corruptedAffix && plannerAffix(item.corruptedAffix), ...regularAffixes].filter(Boolean);
+  if (regularAffixes.filter(affix => !variantIds.includes(affix.affixId)).length > 4) fail('UNSUPPORTED_ITEM_FEATURE', 'More than four regular affixes are not supported.');
+  const affixes = [sealedAffix, item.corruptedAffix && plannerAffix(item.corruptedAffix), ...regularAffixes].filter(Boolean);
   if (new Set(affixes.map(a => a.affixId)).size !== affixes.length) fail('DUPLICATE_AFFIX', 'Duplicate item affixes are not supported.');
   const descriptor = {
     ...identity, individualId: individualId ?? nextIndividualId(usedIds),
@@ -196,14 +206,22 @@ export function encodePlannerItem(item, { containerID, inventoryPosition = { x: 
     affixes, potentialByte: 0, sealedFlags: (item.sealedAffix ? 128 : 0) | (item.corruptedAffix ? 64 : 0),
   };
   if (own(identity, 'uniqueId')) {
-    const unique = catalog.uniques[identity.uniqueId];
-    if (unique.cocooned || unique.preCorrupted || unique.specificAffixes) fail('UNSUPPORTED_ITEM_FEATURE', 'This unique has additional game-defined item features that need separate validation.');
-    descriptor.rarity = affixes.length ? 9 : unique.set ? 8 : 7;
+    if (unique.cocooned || unique.preCorrupted || (unique.specificAffixes && !supportsVariants)) fail('UNSUPPORTED_ITEM_FEATURE', 'This unique has additional game-defined item features that need separate validation.');
+    if (supportsVariants) {
+      const variants = affixes.filter(affix => variantIds.includes(affix.affixId));
+      if (variants.length !== unique.specificAffixCount || affixes.some(affix => catalog.affixes[affix.affixId].specialType === 7 && !variantIds.includes(affix.affixId))) {
+        fail('INVALID_UNIQUE_VARIANT', '暗金变体词缀与当前游戏数据不匹配 / Unique variant affixes do not match the current game data.', { field: 'affixes' });
+      }
+    }
+    // Native GenerateAffixes tests specialAffixType != FakeUniqueMod (7):
+    // a variant alone retains unique rarity and can retain legendary potential.
+    const hasLegendaryAffixes = affixes.some(affix => !variantIds.includes(affix.affixId));
+    descriptor.rarity = hasLegendaryAffixes ? 9 : unique.set ? 8 : 7;
     descriptor.uniqueRolls = Array.from({ length: 8 }, (_, i) => roll(item.ur?.[i], `ur[${i}]`));
     descriptor.extraFlags = 0;
     if (item.lp != null || item.legendaryPotential != null) {
       const lp = int(item.lp ?? item.legendaryPotential, 0, 4, 'legendaryPotential');
-      if (affixes.length && lp) fail('INVALID_LEGENDARY_POTENTIAL', 'Applied legendary affixes cannot also retain legendary potential.');
+      if (hasLegendaryAffixes && lp) fail('INVALID_LEGENDARY_POTENTIAL', 'Applied legendary affixes cannot also retain legendary potential.');
       if ((unique.set || unique.legendaryType === 1) && lp) fail('INVALID_LEGENDARY_POTENTIAL', 'Set and Weaver items cannot have legendary potential.');
       descriptor.extraFlags = lp;
     }
@@ -276,6 +294,16 @@ export function applyPlannerItems(save, build, options = {}) {
   const usedIds = new Set(data.savedItems.filter(x => Number(x.data?.[0]) === 6 && x.data.length >= 5)
     .map(x => (Number(x.data[1]) & 127) * 0x1000000 + Number(x.data[2]) * 65536 + Number(x.data[3]) * 256 + Number(x.data[4])));
   const replacements = new Map();
+  function encodeSelected(item, context, path) {
+    try { return encodePlannerItem(item, context); }
+    catch (error) {
+      if (!(error instanceof UnsupportedItemError)) throw error;
+      const [zh, en = zh] = error.message.split(' / ');
+      throw new UnsupportedItemError(error.code, `${path}（${item.id}）：${zh} / ${path} (${item.id}): ${en}`,
+        { ...error.details, path, itemId: item.id });
+    }
+  }
+
   if (options.equipment !== false) {
     for (const [slot, containerID] of Object.entries(EQUIPMENT_CONTAINERS)) {
       const item = build.equipment?.[slot];
@@ -288,7 +316,7 @@ export function applyPlannerItems(save, build, options = {}) {
           weapon1: [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 23, 24], weapon2: [5, 6, 7, 8, 9, 10, 11, 17, 18, 19] };
         if (!allowed[slot].includes(base)) fail('INVALID_EQUIPMENT_SLOT', `The item does not fit slot ${slot}.`);
       }
-      replacements.set(containerID, item?.id ? [encodePlannerItem(item, { containerID, usedIds, maxRolls: options.maxRolls })] : []);
+      replacements.set(containerID, item?.id ? [encodeSelected(item, { containerID, usedIds, maxRolls: options.maxRolls }, `equipment.${slot}`)] : []);
     }
   }
   if (options.idols !== false) {
@@ -306,7 +334,7 @@ export function applyPlannerItems(save, build, options = {}) {
         if (cells.has(key)) fail('OVERLAPPING_IDOLS', 'Planner idols overlap.');
         cells.add(key);
       }
-      return encodePlannerItem(item, { containerID: 29, inventoryPosition: { x, y }, usedIds, maxRolls: options.maxRolls });
+      return encodeSelected(item, { containerID: 29, inventoryPosition: { x, y }, usedIds, maxRolls: options.maxRolls }, `idols[${item.x},${item.y}]`);
     });
     replacements.set(29, idols);
   }
@@ -316,7 +344,7 @@ export function applyPlannerItems(save, build, options = {}) {
       const item = typeof value === 'string' ? { id: value } : value;
       const containerID = BLESSING_CONTAINERS[timeline - 1];
       if (item?.id && resolvePlannerItemId(item.id).baseTypeId !== 34) fail('INVALID_BLESSING', 'A blessing slot contains a non-blessing.');
-      replacements.set(containerID, item?.id ? [encodePlannerItem(item, { containerID, usedIds, maxRolls: options.maxRolls })] : []);
+      replacements.set(containerID, item?.id ? [encodeSelected(item, { containerID, usedIds, maxRolls: options.maxRolls }, `blessings.${timeline}`)] : []);
     }
   }
   if (replacements.size) {

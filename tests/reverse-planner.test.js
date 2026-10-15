@@ -111,3 +111,12 @@ test('ambiguous duplicate slots reject instead of silently replacing a displayed
   assert.throws(() => saveToPlannerBuild(save), { code: 'DUPLICATE_EQUIPPED_SLOT' });
   assert.throws(() => saveToPlannerBuild({ gold: 123 }), { code: 'NOT_CHARACTER_SAVE' });
 });
+
+test('fixed-pool unique variants survive the local read-only overview and native re-encoding', () => {
+  const save = character();
+  save.savedItems = [wrapped({id: 'UAwRmBYHZKA', sealedAffix: {id: affixId(1136), tier: 1, r: 47}, lp: 3}, 10, 108)];
+  const {build, warnings} = saveToPlannerBuild(save);
+  assert.equal(warnings.filter(warning => warning.slot).length, 0);
+  assert.equal(build.data.equipment.ring1.lp, 3);
+  assert.deepEqual(wrapped(build.data.equipment.ring1, 10, 108).data, save.savedItems[0].data);
+});

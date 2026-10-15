@@ -112,6 +112,12 @@ python tools/extract-save-catalog.py --game-dir 'E:\SteamLibrary\steamapps\commo
 
 比较 `.local/research` 内的新目录与网页现有目录，完成版本及编码复核后，再替换这两个网页数据文件并运行 `npm test`。开发过程中不要把游戏二进制、完整资源、程序集、私人存档或原始提取结果加入提交。
 
+### 暗金变体
+
+`extract-item-catalog.py` 同时抽取 `dropsSpecificLegendaryAffixes` 物品的 `droppableLegendaryAffixes` 与数量。当前 Unsated Rage（477）、Withstand the Elements（479）、Frostborn Solitude（486）使用 `SpecialAffixType.FakeUniqueMod = 7`；Exulis（469）的指定腐化词缀仍不在此支持范围。
+
+LET 把 Unsated Rage 的单个变体放在 `sealedAffix`。这不是游戏普通物品的封印标志，须验证它属于该暗金的固定池，随后作为普通三字节词缀记录编码；变体与传奇附加词缀均保留。根据当前原生 `GenerateItems.GenerateAffixes`（RVA `0x11C0530`，`0x11C0CD7–0x11C0CF7`）及其筛选方法（`0x11F21D0`），仅 `specialAffixType != 7` 的词缀会使暗金成为传奇并清除 LP。因此只有变体时仍保留暗金稀有度与 LP；存在普通传奇词缀时使用传奇稀有度。`RollAffixes`（`0x11C5E90`）调用 `ItemAffix` 构造器时使用 `SealedAffixType.None`；不能把这个变体伪装为 T8 原初封印或腐化封印。
+
 ### 当前物品格式的验证范围
 
 当前保存的物品外层 `formatVersion` 为 2，物品字节数组的 `data[0]` 为 6；这两个版本号含义不同。编码器独立实现于 `web/src/core/items.js`，没有复制 LastEpochTools 的整站脚本。分享 ID 通过类型前缀及标准 LZ-string 解压读取，再由本机提取的当前游戏目录验证对应关系。

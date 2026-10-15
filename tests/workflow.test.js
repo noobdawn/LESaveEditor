@@ -128,3 +128,23 @@ test('a share created from an imported save can sync faction-restricted gear thr
   }
   assert.deepEqual([...flow.state.files.values()].map(entry => serializeSave(entry.original)), originals);
 });
+
+test('a build with the Unsated Rage variant completes sync, review and download without altering inventory', async () => {
+  const build = structuredClone(example);
+  build.data.equipment.ring1 = {id: 'UAwRmBYHZKA', affixes: [{id: 'AKwBgjEA', tier: 7, r: 191}, {id: 'AAwdmQ', tier: 5}], sealedAffix: {id: 'AIzDMDYg', tier: 1}};
+  for (const maxRolls of [false, true]) {
+    const flow = createWorkflow({fetchBuild: async () => build});
+    assert.equal(await flow.importBuild('AAAAAAAA'), true);
+    assert.equal(await flow.addFiles(files()), true); flow.setOption('maxRolls', maxRolls);
+    const original = [...flow.state.files.values()][0].original;
+    const before = serializeSave(original);
+    assert.equal(flow.synchronize(), true, flow.state.error?.message);
+    assert.equal(flow.prepareReview(), true, flow.state.error?.message); flow.state.acknowledged = true;
+    const result = parseSave(flow.downloads()[0].text, flow.downloads()[0].name);
+    const ring = decodeSavedItem(result.data.savedItems.find(item => Number(item.containerID) === 10));
+    assert.equal(ring.uniqueId, 477); assert.equal(ring.rarity, 9);
+    assert.deepEqual(ring.affixes.map(affix => [affix.affixId, affix.tier, affix.roll]), [[1136,1,maxRolls?255:128],[501,7,maxRolls?255:191],[70,5,maxRolls?255:128]]);
+    assert.deepEqual(result.data.savedItems.find(item => Number(item.containerID) === 1), original.data.savedItems[0]);
+    assert.equal(serializeSave(original), before);
+  }
+});

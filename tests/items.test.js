@@ -150,3 +150,43 @@ test('malformed or unsupported faction requirements remain blocked with specific
     return true;
   });
 });
+
+// Minimal public item descriptor, not a character save. Native v6 layout is the oracle.
+const rageRing = {
+  id: 'UAwRmBYHZKA', affixes: [{ id: 'AKwBgjEA', tier: 7, r: 191 }, { id: 'AAwdmQ', tier: 5 }],
+  sealedAffix: { id: 'AIzDMDYg', tier: 1 }, ir: [252, 115, 230], ur: [81, 202, 11, 210, 109, 177, 237, 115],
+};
+
+test('Unsated Rage planner sealedAffix is a native FakeUniqueMod variant, not a discarded regular seal', () => {
+  // RebuildID: rarity 9; unique ID 477; count 3; variant 1136 T1, then 501 T7 and 70 T5.
+  const golden = [6,1,2,3,4,21,10,9,128,252,115,230,1,221,81,202,11,210,109,177,237,115,3,4,112,128,97,245,191,64,70,128];
+  const encoded = encodePlannerItem(rageRing, { containerID: 10, individualId: 0x01020304 });
+  assert.deepEqual(encoded.data, golden);
+  assert.deepEqual(encodeItemData(decodeSavedItem(encoded)), golden);
+  const maximum = decodeSavedItem(encodePlannerItem(rageRing, { containerID: 10, maxRolls: true }));
+  assert.deepEqual(maximum.affixes.map(affix => [affix.affixId, affix.tier]), [[1136,1],[501,7],[70,5]]);
+  assert.ok([...maximum.implicitRolls, ...maximum.uniqueRolls, ...maximum.affixes.map(affix => affix.roll)].every(roll => roll === 255));
+});
+
+test('fixed-pool variants alone keep unique rarity and LP, while true legendary affixes reject positive LP', () => {
+  const ring = { id: rageRing.id, sealedAffix: rageRing.sealedAffix, lp: 3 };
+  const unique = decodeSavedItem(encodePlannerItem(ring, { containerID: 10 }));
+  assert.equal(unique.rarity, 7); assert.equal(unique.extraFlags, 3);
+  assert.deepEqual(unique.affixes.map(affix => affix.affixId), [1136]);
+  const direct = encodePlannerItem({ id: rageRing.id, affixes: [rageRing.sealedAffix], lp: 3 }, { containerID: 10, individualId: 16 });
+  assert.deepEqual(direct.data, encodePlannerItem(ring, { containerID: 10, individualId: 16 }).data);
+  assert.throws(() => encodePlannerItem({ ...rageRing, lp: 1 }, { containerID: 10 }), {code: 'INVALID_LEGENDARY_POTENTIAL'});
+});
+
+test('unique variant pool/count and unsupported seals remain strict and report the offending slot atomically', () => {
+  assert.throws(() => encodePlannerItem({ id: rageRing.id }, {containerID: 10}), {code: 'INVALID_UNIQUE_VARIANT'});
+  assert.throws(() => encodePlannerItem({ ...rageRing, sealedAffix: {id: affixId(26), tier: 3} }, {containerID: 10}), {code: 'UNSUPPORTED_ITEM_FEATURE'});
+  assert.throws(() => encodePlannerItem({ ...rageRing, affixes: [...rageRing.affixes, {id: affixId(1140), tier: 1}] }, {containerID: 10}), {code: 'INVALID_UNIQUE_VARIANT'});
+  const original = {savedItems: [{containerID: 1, data: [99,1,2], opaque: true}]}, before = stringify(original);
+  assert.throws(() => applyPlannerItems(original, {equipment: {ring1: {...rageRing, ruined: true}}}, {idols: false, blessings: false}), error => {
+    assert.equal(error.details.path, 'equipment.ring1'); assert.equal(error.details.itemId, rageRing.id);
+    assert.ok(error.message.split(' / ').every(message => message.includes('equipment.ring1') && message.includes(rageRing.id)));
+    return true;
+  });
+  assert.equal(stringify(original), before);
+});
