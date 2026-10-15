@@ -106,3 +106,25 @@ test('file reads block synchronization and changing selection until the complete
   flow.removeFile('1CHARACTERSLOT_BETA_9');assert.equal(flow.state.files.size,1);
   read.resolve(await files()[1].text());assert.equal(await loading,true);assert.equal(flow.state.files.size,2);
 });
+
+test('a share created from an imported save can sync faction-restricted gear through review and native download', async () => {
+  const imported = structuredClone(example);
+  imported.data.equipment.head.faction = [0, 4];
+  imported.data.equipment.ring1.faction = [0, 5];
+  imported.data.equipment.ring2.faction = [1, 5];
+  const flow = createWorkflow({ fetchBuild: async () => imported });
+  assert.equal(await flow.importBuild('AAAAAAAA'), true);
+  assert.equal(await flow.addFiles(files()), true);
+  const originals = [...flow.state.files.values()].map(entry => serializeSave(entry.original));
+  flow.setOption('maxRolls', true);
+  assert.equal(flow.synchronize(), true, flow.state.error?.message);
+  assert.equal(flow.prepareReview(), true, flow.state.error?.message);
+  flow.state.acknowledged = true;
+  const downloaded = parseSave(flow.downloads()[0].text, flow.downloads()[0].name);
+  for (const [container, flags] of [[2, 132], [10, 133], [9, 197]]) {
+    const item = downloaded.data.savedItems.find(item => Number(item.containerID) === container);
+    assert.equal(Number(item.data[8]), flags);
+    assert.ok(decodeSavedItem(item).implicitRolls.every(roll => roll === 255));
+  }
+  assert.deepEqual([...flow.state.files.values()].map(entry => serializeSave(entry.original)), originals);
+});

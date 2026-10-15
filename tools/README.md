@@ -116,7 +116,9 @@ python tools/extract-save-catalog.py --game-dir 'E:\SteamLibrary\steamapps\commo
 
 当前保存的物品外层 `formatVersion` 为 2，物品字节数组的 `data[0]` 为 6；这两个版本号含义不同。编码器独立实现于 `web/src/core/items.js`，没有复制 LastEpochTools 的整站脚本。分享 ID 通过类型前缀及标准 LZ-string 解压读取，再由本机提取的当前游戏目录验证对应关系。
 
-本构建核对了原生 `ItemData.RebuildID`（RVA `0x1205e80`）、`setValuesFromSerialisation`（`0x12127e0`）及 `loadAffixFromSerialisation`（`0x1211380`）。已确认四字节物品身份、三字节隐含数值、八字节暗金数值、词缀等级与 ID 的打包、普通封印/腐化标志、Weaver 字段及赠礼尾部。C# 类型文件用于定位这些地址，方法行为依据实际原生代码核对。
+本构建核对了原生 `ItemData.RebuildID`（RVA `0x1205e80`）、`setValuesFromSerialisation`（`0x12127e0`）及 `loadAffixFromSerialisation`（`0x1211380`）。补充核对阵营限制：`RebuildID` 的 `0x1206373–0x12063A4` 将物品所需阵营（0 命运之环／1 商人公会）放入 `data[8]` 的 bit 6、所需阶级放入低 4 位；`setValuesFromSerialisation` 的 `0x1212DDF–0x1212EE7` 对应读取阶级、腐化、毁坏、阵营与不可交易标志。LET 从存档导入后产生的 `faction: [阵营编号, 阶级]` 按此编码保留，阶级上限使用同构建阵营数据，不丢弃物品限制。
+
+已确认四字节物品身份、三字节隐含数值、八字节暗金数值、词缀等级与 ID 的打包、普通封印/腐化标志、Weaver 字段及赠礼尾部。C# 类型文件用于定位这些地址，方法行为依据实际原生代码核对。
 
 验证包括 101 件当前本地备份物品“解码→重新编码”逐字节一致、公开样例 33 件装备/神像/祝福导入，以及合成固定字节样例、未知字段拒绝、缺失分区拒绝、祭坛格子和无损大整数保留测试：
 

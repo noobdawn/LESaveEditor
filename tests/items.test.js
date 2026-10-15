@@ -119,3 +119,34 @@ test('verified local backup items round-trip byte for byte; private files are op
   }
   assert.ok(verified >= 101, `Expected current fixtures, verified ${verified} items`);
 });
+
+test('planner import retains native faction rank bits together with corruption and untradeable flags', () => {
+  // Current native RebuildID packs requiredFaction << 6 | rank | corruption | untradeable.
+  const cof = encodePlannerItem({ id: 'UAwRgrALA7CQ', faction: [0, 4] }, { containerID: 2, individualId: 24 });
+  assert.equal(cof.data[8], 132);
+  const merchant = encodePlannerItem({ id: baseId(2, 2), faction: [1, 5], corruptedAffix: { id: affixId(86), tier: 4, r: 40 } },
+    { containerID: 7, individualId: 25, maxRolls: true });
+  assert.equal(merchant.data[8], 213);
+  assert.equal(decodeSavedItem(merchant).affixes[0].roll, 255);
+  assert.deepEqual(encodeItemData(decodeSavedItem(merchant)), merchant.data);
+  for (const faction of [[0, 12], [1, 12], [0, 0]]) {
+    assert.equal(encodePlannerItem({ id: 'UAwRgrALA7CQ', faction }, { containerID: 2 }).data[8], 128 | faction[0] << 6 | faction[1]);
+  }
+});
+
+test('malformed or unsupported faction requirements remain blocked with specific bilingual field errors', () => {
+  for (const faction of [[], [0], [0, 4, 1], {}, [true, 4], [0, '4'], [2, 4], [-1, 4], [0, 13], [0, -1], [0, 4.5]]) {
+    assert.throws(() => encodePlannerItem({ id: 'UAwRgrALA7CQ', faction }, { containerID: 2 }), error => {
+      assert.ok(['INVALID_ITEM_FACTION', 'INVALID_ITEM'].includes(error.code));
+      assert.ok(error.message.split(' / ').every(message => message.includes('faction')), error.message);
+      assert.ok(error.details.field.startsWith('faction'));
+      return true;
+    });
+  }
+  assert.throws(() => encodePlannerItem({ id: 'UAwRgrALA7CQ', unknownFutureSystem: 1 }, { containerID: 2 }), error => {
+    assert.equal(error.code, 'UNSUPPORTED_ITEM_FEATURE');
+    assert.equal(error.details.field, 'unknownFutureSystem');
+    assert.ok(error.message.split(' / ').every(message => message.includes('unknownFutureSystem')));
+    return true;
+  });
+});

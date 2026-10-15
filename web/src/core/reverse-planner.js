@@ -65,6 +65,7 @@ function itemRecord(savedItem, context) {
     fail('INVALID_BLESSING', '祝福容器中存在非祝福物品。', 'A blessing container contains a non-blessing item.');
   }
   const record = { id: itemId(item), ir: [...item.implicitRolls], affixes: [] };
+  if (item.flags & 15) record.faction = [(item.flags >> 6) & 1, item.flags & 15];
   if (item.flags & 32) record.ruined = true;
   let affixOffset = 0;
   if (UNIQUE_RARITIES.has(item.rarity)) {

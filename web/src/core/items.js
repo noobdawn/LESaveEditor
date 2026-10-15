@@ -1,5 +1,6 @@
 import catalog from './game-item-data.json' with { type: 'json' };
 import LZString from 'lz-string';
+import worldData from '../data/world-data.json' with { type: 'json' };
 import { cloneSaveData } from './save.js';
 
 // Independently implemented from ItemData.RebuildID in game build 8dfd6929…:
@@ -22,7 +23,7 @@ function fail(code, message, details) { throw new UnsupportedItemError(code, mes
 function int(value, min, max, field) {
   const n = Number(value);
   if (value == null || value === '' || typeof value === 'boolean' || !Number.isSafeInteger(n) || n < min || n > max) {
-    fail('INVALID_ITEM', `无效物品字段 / Invalid item field: ${field}`, { field });
+    fail('INVALID_ITEM', `无效物品字段：${field} / Invalid item field: ${field}`, { field });
   }
   return n;
 }
@@ -163,10 +164,21 @@ function nextIndividualId(usedIds) {
 /** Convert an observed LET item record to the current game's saved item wrapper. */
 export function encodePlannerItem(item, { containerID, inventoryPosition = { x: 0, y: 0 }, usedIds, individualId, maxRolls = false } = {}) {
   const identity = resolvePlannerItemId(item?.id);
-  const allowedFields = new Set(['id', 'affixes', 'ir', 'ur', 'x', 'y', 'lp', 'legendaryPotential', 'ww', 'wt', 'sealedAffix', 'corruptedAffix', 'corrupted', 'ruined']);
-  for (const key of Object.keys(item)) if (!allowedFields.has(key)) fail('UNSUPPORTED_ITEM_FEATURE', `尚未验证物品字段 / Unverified item field: ${key}`);
+  const allowedFields = new Set(['id', 'affixes', 'ir', 'ur', 'x', 'y', 'lp', 'legendaryPotential', 'ww', 'wt', 'sealedAffix', 'corruptedAffix', 'corrupted', 'ruined', 'faction']);
+  for (const key of Object.keys(item)) if (!allowedFields.has(key)) fail('UNSUPPORTED_ITEM_FEATURE', `尚未验证物品字段：${key} / Unverified item field: ${key}`, { field: key });
   for (const [key, count] of [['ir', 3], ['ur', 8]]) {
     if (item[key] != null && (!Array.isArray(item[key]) || item[key].length > count)) fail('INVALID_ROLLS', `Invalid ${key} array.`);
+  }
+  // Current ItemData.RebuildID: byte 8 packs rank in bits 0–3 and
+  // CoF/MG in bit 6; bit 7 remains the generated item's untradeable flag.
+  let factionFlags = 0;
+  if (item.faction != null) {
+    if (!Array.isArray(item.faction) || item.faction.length !== 2 || !item.faction.every(Number.isSafeInteger)) {
+      fail('INVALID_ITEM_FACTION', '无效物品阵营限制：faction 必须包含阵营编号和阶级 / Invalid item faction: faction must contain a faction ID and rank.', { field: 'faction' });
+    }
+    const id = int(item.faction[0], 0, 1, 'faction[0]');
+    const rank = int(item.faction[1], 0, worldData.factions[id].maxRank, 'faction[1]');
+    factionFlags = (id << 6) | rank;
   }
   // These carry additional semantics that cannot be discarded safely.
   const isUnique = own(identity, 'uniqueId');
@@ -179,7 +191,7 @@ export function encodePlannerItem(item, { containerID, inventoryPosition = { x: 
   if (new Set(affixes.map(a => a.affixId)).size !== affixes.length) fail('DUPLICATE_AFFIX', 'Duplicate item affixes are not supported.');
   const descriptor = {
     ...identity, individualId: individualId ?? nextIndividualId(usedIds),
-    rarity: Math.min(4, regularAffixes.length), flags: 128 | (corrupted ? 16 : 0), // Locally generated, always untradeable.
+    rarity: Math.min(4, regularAffixes.length), flags: 128 | factionFlags | (corrupted ? 16 : 0), // Locally generated, always untradeable.
     implicitRolls: Array.from({ length: 3 }, (_, i) => roll(item.ir?.[i], `ir[${i}]`)),
     affixes, potentialByte: 0, sealedFlags: (item.sealedAffix ? 128 : 0) | (item.corruptedAffix ? 64 : 0),
   };
@@ -252,10 +264,10 @@ function validateEquippedIdolGrid(savedItems) {
 export function applyPlannerItems(save, build, options = {}) {
   for (const section of ['equipment', 'idols', 'blessings']) {
     if (options[section] === false) continue;
-    if (!own(build, section)) fail('MISSING_PLANNER_SECTION', `缺少已选配装数据 / Missing selected planner section: ${section}`);
+    if (!own(build, section)) fail('MISSING_PLANNER_SECTION', `缺少已选配装数据：${section} / Missing selected planner section: ${section}`);
     const value = build[section];
     if (section === 'idols' ? !Array.isArray(value) : value == null || typeof value !== 'object' || Array.isArray(value)) {
-      fail('INVALID_PLANNER_SECTION', `无效配装数据 / Invalid planner section: ${section}`);
+      fail('INVALID_PLANNER_SECTION', `无效配装数据：${section} / Invalid planner section: ${section}`);
     }
   }
   const data = cloneSaveData(save);

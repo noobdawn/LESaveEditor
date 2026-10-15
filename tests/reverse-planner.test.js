@@ -35,8 +35,8 @@ test('local overview preserves save precision and source objects, and is explici
 test('verified gear, sealed and corrupted affixes, Weaver rolls and potential survive the reverse mapping', () => {
   const save = character();
   save.savedItems = [
-    wrapped({ id: 'UAwRgrALA7CQ', lp: 3, ir: [0, 128, 255], ur: [1, 2, 3, 4, 5, 6, 7, 8] }, 2, 100),
-    wrapped({ id: baseId(2, 2), affixes: [affix(26, 6, 0)], sealedAffix: affix(32, 3, 100), corruptedAffix: affix(86, 4, 250) }, 7, 101),
+    wrapped({ id: 'UAwRgrALA7CQ', lp: 3, faction: [0, 4], ir: [0, 128, 255], ur: [1, 2, 3, 4, 5, 6, 7, 8] }, 2, 100),
+    wrapped({ id: baseId(2, 2), faction: [1, 5], affixes: [affix(26, 6, 0)], sealedAffix: affix(32, 3, 100), corruptedAffix: affix(86, 4, 250) }, 7, 101),
     wrapped({ id: 'UAwRgTAzMxA', affixes: [affix(26, 5, 90)], ww: 13 }, 12, 102),
   ];
   const before = stringify(save);
@@ -48,6 +48,8 @@ test('verified gear, sealed and corrupted affixes, Weaver rolls and potential su
     assert.deepEqual(returned.data, source.data, `verified expressible bytes must match for ${slot}`);
   }
   assert.equal(build.data.equipment.head.lp, 3);
+  assert.deepEqual(build.data.equipment.head.faction, [0, 4]);
+  assert.deepEqual(build.data.equipment.waist.faction, [1, 5]);
   assert.equal(build.data.equipment.waist.corrupted, true);
   assert.equal(build.data.equipment.relic.ww, 13);
   assert.equal(stringify(save), before);
