@@ -1,0 +1,1129 @@
+{
+  "id": "Q9JP5wbn",
+  "sourceUrl": "https://www.lastepochtools.com/planner/zh/Q9JP5wbn",
+  "dataVersion": "Version 1.5.2",
+  "data": {
+    "fromSaveFile": 0,
+    "gh": "2d071368583e8f2d152b4eb3817f6893",
+    "newGrid": true,
+    "bio": {
+      "level": 100,
+      "characterClass": 4,
+      "chosenMastery": 2
+    },
+    "equipment": {
+      "head": {
+        "id": "UAzBsIJiA",
+        "affixes": [
+          {
+            "id": "AKwBgzEA",
+            "tier": 6,
+            "r": 239
+          },
+          {
+            "id": "ACwDgnEA",
+            "tier": 7,
+            "r": 154
+          },
+          {
+            "id": "AAzDsQ",
+            "tier": 5,
+            "r": 233
+          },
+          {
+            "id": "AAwRg7EA",
+            "tier": 7,
+            "r": 4
+          }
+        ],
+        "corruptedAffix": {
+          "id": "AAwJgrEA",
+          "tier": 1,
+          "r": 130
+        },
+        "ir": [
+          189,
+          68,
+          81
+        ],
+        "ur": [
+          146,
+          254,
+          41,
+          39,
+          104,
+          23,
+          86,
+          25
+        ],
+        "faction": [
+          1,
+          1
+        ]
+      },
+      "chest": {
+        "id": "UAzBsBYA4HYg",
+        "affixes": [
+          {
+            "id": "AOwNgjEA",
+            "tier": 7,
+            "r": 235
+          },
+          {
+            "id": "AKwBgzEA",
+            "tier": 7,
+            "r": 140
+          }
+        ],
+        "ir": [
+          86,
+          84,
+          195
+        ],
+        "ur": [
+          252,
+          252,
+          117,
+          49,
+          239,
+          242,
+          66,
+          19
+        ],
+        "faction": [
+          1,
+          1
+        ]
+      },
+      "weapon1": {
+        "id": "UAzBsEYFYE4g",
+        "affixes": [
+          {
+            "id": "AGwdgTEA",
+            "tier": 7,
+            "r": 210
+          },
+          {
+            "id": "ACwZgTEA",
+            "tier": 7,
+            "r": 194
+          },
+          {
+            "id": "AAwJmQ",
+            "tier": 1,
+            "r": 83
+          }
+        ],
+        "corruptedAffix": {
+          "id": "AJwNmQ",
+          "tier": 3,
+          "r": 160
+        },
+        "ir": [
+          60,
+          66,
+          197
+        ],
+        "ur": [
+          246,
+          7,
+          111,
+          4,
+          145,
+          84,
+          89,
+          216
+        ],
+        "faction": [
+          1,
+          1
+        ]
+      },
+      "weapon2": {
+        "id": "UAzDMEYBYDYg",
+        "affixes": [
+          {
+            "id": "AKwBgzEA",
+            "tier": 7,
+            "r": 189
+          },
+          {
+            "id": "ACwZgTEA",
+            "tier": 7,
+            "r": 179
+          },
+          {
+            "id": "AAwRg7EA",
+            "tier": 6,
+            "r": 217
+          },
+          {
+            "id": "AAwDmQ",
+            "tier": 5,
+            "r": 237
+          }
+        ],
+        "corruptedAffix": {
+          "id": "AJwNmQ",
+          "tier": 2,
+          "r": 210
+        },
+        "ir": [
+          26,
+          129,
+          14
+        ],
+        "ur": [
+          157,
+          152,
+          207,
+          21,
+          156,
+          3,
+          92,
+          133
+        ],
+        "faction": [
+          1,
+          1
+        ]
+      },
+      "hands": {
+        "id": "UAzDMBYHYE4g",
+        "affixes": [
+          {
+            "id": "AKwBgzEA",
+            "tier": 7,
+            "r": 178
+          },
+          {
+            "id": "AAwRg7EA",
+            "tier": 7,
+            "r": 90
+          },
+          {
+            "id": "AAwDmQ",
+            "tier": 5,
+            "r": 171
+          }
+        ],
+        "sealedAffix": {
+          "id": "AIzAsFYg",
+          "tier": 5,
+          "r": 97
+        },
+        "primordialAffix": {
+          "id": "AIzAsHYg",
+          "tier": 4,
+          "r": 3
+        },
+        "corruptedAffix": {
+          "id": "AIwBgTA7EA",
+          "tier": 6,
+          "r": 6
+        },
+        "ir": [
+          9,
+          252,
+          51
+        ],
+        "ur": [
+          42,
+          205,
+          146,
+          164,
+          135,
+          122,
+          93,
+          178
+        ],
+        "faction": [
+          1,
+          1
+        ]
+      },
+      "waist": {
+        "id": "UAzDsBZgJiA",
+        "affixes": [
+          {
+            "id": "AAwRgbEA",
+            "tier": 7,
+            "r": 126
+          },
+          {
+            "id": "AAwVgTEA",
+            "tier": 7,
+            "r": 192
+          },
+          {
+            "id": "AAwVgnEA",
+            "tier": 7,
+            "r": 147
+          }
+        ],
+        "corruptedAffix": {
+          "id": "AJzDsQ",
+          "tier": 7,
+          "r": 184
+        },
+        "ir": [
+          213,
+          255,
+          92
+        ],
+        "ur": [
+          118,
+          79,
+          221,
+          81,
+          249,
+          143,
+          241,
+          159
+        ],
+        "faction": [
+          1,
+          1
+        ]
+      },
+      "feet": {
+        "id": "UAzCMYTiA",
+        "affixes": [
+          {
+            "id": "AKwBgzEA",
+            "tier": 7,
+            "r": 191
+          },
+          {
+            "id": "AAwRg7EA",
+            "tier": 7,
+            "r": 177
+          },
+          {
+            "id": "AOwNgDEA",
+            "tier": 6,
+            "r": 24
+          }
+        ],
+        "ir": [
+          46,
+          94,
+          32
+        ],
+        "ur": [
+          137,
+          22,
+          88,
+          144,
+          38,
+          10,
+          117,
+          125
+        ],
+        "faction": [
+          1,
+          1
+        ]
+      },
+      "ring1": {
+        "id": "UAwRmBYHZKA",
+        "affixes": [
+          {
+            "id": "AIwBg7ArEA",
+            "tier": 1,
+            "r": 76
+          }
+        ],
+        "corruptedAffix": {
+          "id": "AIzBMDYg",
+          "tier": 4,
+          "r": 226
+        },
+        "ir": [
+          141,
+          235,
+          104
+        ],
+        "ur": [
+          252,
+          79,
+          136,
+          203,
+          36,
+          96,
+          10,
+          240
+        ],
+        "faction": [
+          1,
+          1
+        ]
+      },
+      "ring2": {
+        "id": "UAwRmBYHZKA",
+        "affixes": [
+          {
+            "id": "AKwBgzEA",
+            "tier": 7,
+            "r": 92
+          },
+          {
+            "id": "AAwRg7EA",
+            "tier": 7,
+            "r": 218
+          }
+        ],
+        "sealedAffix": {
+          "id": "AIwjsQ",
+          "tier": 4,
+          "r": 174
+        },
+        "corruptedAffix": {
+          "id": "AAwRgnEA",
+          "tier": 1,
+          "r": 167
+        },
+        "ir": [
+          192,
+          135,
+          86
+        ],
+        "ur": [
+          228,
+          6,
+          200,
+          151,
+          253,
+          252,
+          227,
+          224
+        ],
+        "faction": [
+          1,
+          1
+        ]
+      },
+      "amulet": {
+        "id": "UAzAcBYGYE4g",
+        "affixes": [
+          {
+            "id": "AAzBsQ",
+            "tier": 7,
+            "r": 128
+          },
+          {
+            "id": "AAwRg7EA",
+            "tier": 7,
+            "r": 203
+          },
+          {
+            "id": "AAwVgnEA",
+            "tier": 7,
+            "r": 58
+          }
+        ],
+        "ir": [
+          27,
+          222,
+          108
+        ],
+        "ur": [
+          200,
+          11,
+          144,
+          172,
+          70,
+          197,
+          88,
+          55
+        ],
+        "faction": [
+          1,
+          1
+        ]
+      },
+      "relic": {
+        "id": "UAwNgTALAjAzEA",
+        "affixes": [
+          {
+            "id": "AKwBgzEA",
+            "tier": 7,
+            "r": 53
+          },
+          {
+            "id": "AAzBsQ",
+            "tier": 7,
+            "r": 207
+          }
+        ],
+        "ir": [
+          196,
+          162,
+          148
+        ],
+        "ur": [
+          196,
+          196,
+          239,
+          206,
+          244,
+          145,
+          74,
+          39
+        ],
+        "faction": [
+          1,
+          1
+        ]
+      },
+      "idol_altar": {
+        "id": "IIwBgLKIJwrQ",
+        "affixes": [
+          {
+            "id": "AIwBgnArEA",
+            "tier": 6,
+            "r": 170
+          },
+          {
+            "id": "AIwBgHAnEA",
+            "tier": 4,
+            "r": 133
+          },
+          {
+            "id": "AIzAMqA",
+            "tier": 1,
+            "r": 232
+          },
+          {
+            "id": "AIwBgnAbEA",
+            "tier": 2,
+            "r": 184
+          }
+        ],
+        "corruptedAffix": {
+          "id": "AIwBgnAzEA",
+          "tier": 6,
+          "r": 164
+        },
+        "ir": [
+          83,
+          245,
+          55
+        ],
+        "ur": [],
+        "faction": [
+          1,
+          1
+        ]
+      }
+    },
+    "idols": [
+      {
+        "x": 4,
+        "y": 4,
+        "id": "IIwBgzGLKIkA",
+        "affixes": [
+          {
+            "id": "AOwFgzEA",
+            "tier": 1,
+            "r": 242
+          },
+          {
+            "id": "ACwTgTEA",
+            "tier": 1,
+            "r": 215
+          },
+          {
+            "id": "ABwTgTEA",
+            "tier": 6,
+            "r": 230
+          }
+        ],
+        "corruptedAffix": {
+          "id": "AIwBgLGQ",
+          "tier": 1,
+          "r": 196
+        },
+        "ur": []
+      },
+      {
+        "x": 3,
+        "y": 3,
+        "id": "IIwBgzCLALJJA",
+        "affixes": [
+          {
+            "id": "AOwFgzEA",
+            "tier": 1,
+            "r": 158
+          },
+          {
+            "id": "ACwTgTEA",
+            "tier": 1,
+            "r": 228
+          }
+        ],
+        "corruptedAffix": {
+          "id": "AIwBgrATEA",
+          "tier": 1,
+          "r": 35
+        },
+        "ur": []
+      },
+      {
+        "x": 1,
+        "y": 4,
+        "id": "UAzCsCYEZKA",
+        "affixes": [],
+        "corruptedAffix": {
+          "id": "AIwBgTAnEA",
+          "tier": 1,
+          "r": 234
+        },
+        "ur": [
+          177,
+          237,
+          230,
+          16,
+          69,
+          249,
+          167,
+          4
+        ]
+      },
+      {
+        "x": 2,
+        "y": 1,
+        "id": "IIwBgzCLALJJA",
+        "affixes": [
+          {
+            "id": "AOwFgzEA",
+            "tier": 1,
+            "r": 219
+          },
+          {
+            "id": "ACwNgTEA",
+            "tier": 1,
+            "r": 68
+          }
+        ],
+        "corruptedAffix": {
+          "id": "AIwhMQ",
+          "tier": 1,
+          "r": 118
+        },
+        "ur": []
+      },
+      {
+        "x": 4,
+        "y": 1,
+        "id": "IIwBgzCLALJJA",
+        "affixes": [
+          {
+            "id": "AOwFgzEA",
+            "tier": 1,
+            "r": 198
+          },
+          {
+            "id": "ACwTgjEA",
+            "tier": 1,
+            "r": 104
+          }
+        ],
+        "corruptedAffix": {
+          "id": "AIwBgTAnEA",
+          "tier": 1,
+          "r": 21
+        },
+        "ur": []
+      },
+      {
+        "x": 5,
+        "y": 3,
+        "id": "IIwBgTAbCKtQ",
+        "affixes": [
+          {
+            "id": "ABwFg7EA",
+            "tier": 1,
+            "r": 243
+          },
+          {
+            "id": "ABwVgDEA",
+            "tier": 1,
+            "r": 201
+          }
+        ],
+        "corruptedAffix": {
+          "id": "AIwBgbALEA",
+          "tier": 1,
+          "r": 84
+        },
+        "ur": []
+      },
+      {
+        "x": 1,
+        "y": 3,
+        "id": "IIwBgTAbCKtQ",
+        "affixes": [
+          {
+            "id": "ABwFg7EA",
+            "tier": 1,
+            "r": 142
+          },
+          {
+            "id": "ABwVgDEA",
+            "tier": 1,
+            "r": 214
+          }
+        ],
+        "corruptedAffix": {
+          "id": "AIwBgbAnEA",
+          "tier": 1,
+          "r": 101
+        },
+        "ur": []
+      },
+      {
+        "x": 3,
+        "y": 1,
+        "id": "IIwBgTAbC00A",
+        "affixes": [
+          {
+            "id": "AIwFgTEA",
+            "tier": 1,
+            "r": 224
+          },
+          {
+            "id": "AIzBMQ",
+            "tier": 1,
+            "r": 255
+          }
+        ],
+        "corruptedAffix": {
+          "id": "AIwBgbGQ",
+          "tier": 1,
+          "r": 77
+        },
+        "ur": []
+      }
+    ],
+    "blessings": {
+      "1": {
+        "id": "IIwBgzALMwEwvQ",
+        "ir": [
+          231,
+          110,
+          250
+        ]
+      },
+      "2": {
+        "id": "IIwBgzALMwJwvQ",
+        "ir": [
+          251,
+          170,
+          76
+        ]
+      },
+      "3": {
+        "id": "IIwBgzALCEOwvQ",
+        "ir": [
+          245,
+          247,
+          179
+        ]
+      },
+      "4": {
+        "id": "IIwBgzALMEGwvQ",
+        "ir": [
+          181,
+          252,
+          124
+        ]
+      },
+      "5": {
+        "id": "IIwBgzALCAcoiQ",
+        "ir": [
+          245,
+          61,
+          27
+        ]
+      },
+      "6": {
+        "id": "IIwBgzALMYOwvQ",
+        "ir": [
+          192,
+          223,
+          174
+        ]
+      },
+      "7": {
+        "id": "IIwBgzALMEJwvQ",
+        "ir": [
+          239,
+          185,
+          100
+        ]
+      },
+      "8": {
+        "id": "IIwBgzALMDsCcIKA",
+        "ir": [
+          157,
+          215,
+          16
+        ]
+      },
+      "9": {
+        "id": "IIwBgzALMCcoiQ",
+        "ir": [
+          253,
+          116,
+          250
+        ]
+      },
+      "10": {
+        "id": "IIwBgzALATMoiQ",
+        "ir": [
+          220,
+          161,
+          101
+        ]
+      }
+    },
+    "weaverTreeContainers": {
+      "91": {
+        "id": "IIzAMHZQFk1SA",
+        "affixes": [],
+        "ir": [],
+        "ur": []
+      },
+      "92": {
+        "id": "IIzAMHZQFk1SA",
+        "affixes": [],
+        "ir": [],
+        "ur": []
+      },
+      "93": {
+        "id": "IIwBgTK4tQ",
+        "affixes": [
+          {
+            "id": "AAwdgTEA",
+            "tier": 7,
+            "r": 215
+          },
+          {
+            "id": "AAwdmQ",
+            "tier": 7,
+            "r": 154
+          },
+          {
+            "id": "AAwRgzEA",
+            "tier": 7,
+            "r": 17
+          },
+          {
+            "id": "AAwFgrEA",
+            "tier": 2,
+            "r": 244
+          }
+        ],
+        "sealedAffix": {
+          "id": "AAwRgLEA",
+          "tier": 4,
+          "r": 245
+        },
+        "ir": [
+          80,
+          214,
+          27
+        ],
+        "ur": []
+      },
+      "94": {
+        "id": "IIwBhoVlMg",
+        "affixes": [
+          {
+            "id": "AAwTgrEA",
+            "tier": 7,
+            "r": 211
+          },
+          {
+            "id": "AAwRg7EA",
+            "tier": 7,
+            "r": 138
+          },
+          {
+            "id": "AAwJhQ",
+            "tier": 7,
+            "r": 35
+          }
+        ],
+        "sealedAffix": {
+          "id": "AKwBmQ",
+          "tier": 4,
+          "r": 30
+        },
+        "ir": [
+          58,
+          230,
+          231
+        ],
+        "ur": []
+      },
+      "95": {
+        "id": "IIwBgTK4tQ",
+        "affixes": [
+          {
+            "id": "AAwdgTEA",
+            "tier": 7,
+            "r": 215
+          },
+          {
+            "id": "AAwdmQ",
+            "tier": 7,
+            "r": 154
+          },
+          {
+            "id": "AAwRgzEA",
+            "tier": 7,
+            "r": 17
+          },
+          {
+            "id": "AAwFgrEA",
+            "tier": 2,
+            "r": 244
+          }
+        ],
+        "sealedAffix": {
+          "id": "AAwRgLEA",
+          "tier": 4,
+          "r": 245
+        },
+        "ir": [
+          80,
+          214,
+          27
+        ],
+        "ur": []
+      }
+    },
+    "charTree": {
+      "treeID": "",
+      "selected": {
+        "0": 8,
+        "1": 1,
+        "3": 8,
+        "6": 6,
+        "7": 5,
+        "20": 5,
+        "22": 8,
+        "25": 1,
+        "28": 5,
+        "29": 5,
+        "30": 5,
+        "31": 4,
+        "33": 5,
+        "35": 6,
+        "36": 1,
+        "37": 5,
+        "39": 4,
+        "40": 1,
+        "41": 1,
+        "42": 1,
+        "44": 5,
+        "45": 2,
+        "46": 5,
+        "50": 5,
+        "78": 5,
+        "79": 1,
+        "82": 5
+      },
+      "version": 0
+    },
+    "skillTrees": [
+      {
+        "treeID": "htsk5",
+        "selected": {
+          "1": 2,
+          "2": 3,
+          "3": 3,
+          "4": 1,
+          "5": 1,
+          "9": 4,
+          "10": 1,
+          "12": 2,
+          "16": 2,
+          "17": 1,
+          "18": 4,
+          "23": 3,
+          "27": 1,
+          "28": 1
+        },
+        "level": 29,
+        "slotNumber": 0,
+        "version": 1
+      },
+      {
+        "treeID": "shiif",
+        "selected": {
+          "2": 2,
+          "9": 2,
+          "12": 4,
+          "13": 5,
+          "15": 3,
+          "16": 1,
+          "19": 1,
+          "27": 3,
+          "30": 4
+        },
+        "level": 25,
+        "slotNumber": 1,
+        "version": 4
+      },
+      {
+        "treeID": "smbmb",
+        "selected": {
+          "2": 1,
+          "10": 5,
+          "11": 1,
+          "15": 1,
+          "17": 1,
+          "19": 1,
+          "20": 3,
+          "21": 1,
+          "29": 1,
+          "30": 3,
+          "31": 1,
+          "32": 4
+        },
+        "level": 23,
+        "slotNumber": 2,
+        "version": 1
+      },
+      {
+        "treeID": "pun22",
+        "selected": {
+          "2": 2,
+          "3": 4,
+          "5": 2,
+          "7": 1,
+          "13": 2,
+          "14": 2,
+          "15": 2,
+          "16": 4,
+          "20": 2,
+          "21": 4,
+          "23": 1,
+          "24": 1
+        },
+        "level": 27,
+        "slotNumber": 3,
+        "version": 7
+      },
+      {
+        "treeID": "deeco",
+        "selected": {
+          "1": 2,
+          "3": 3,
+          "4": 1,
+          "7": 2,
+          "8": 3,
+          "9": 1,
+          "10": 4,
+          "11": 4,
+          "12": 1,
+          "16": 1,
+          "18": 3
+        },
+        "level": 25,
+        "slotNumber": 4,
+        "version": 1
+      }
+    ],
+    "weaverTree": {
+      "treeID": "",
+      "selected": {
+        "1": 1,
+        "4": 1,
+        "5": 1,
+        "10": 1,
+        "21": 1,
+        "25": 1,
+        "41": 1,
+        "42": 1,
+        "43": 1,
+        "45": 1,
+        "46": 1,
+        "56": 1,
+        "58": 1,
+        "59": 1,
+        "63": 1,
+        "103": 1,
+        "105": 4,
+        "121": 2,
+        "122": 1,
+        "125": 3,
+        "126": 1,
+        "131": 1,
+        "151": 1,
+        "161": 1,
+        "162": 3,
+        "164": 1,
+        "165": 1,
+        "166": 3,
+        "168": 1,
+        "189": 2,
+        "190": 4,
+        "191": 1
+      },
+      "version": 10
+    },
+    "hud": [
+      "shiif",
+      "",
+      "deeco",
+      "smbmb",
+      "htsk5"
+    ],
+    "weaponTypes": [
+      23,
+      17
+    ],
+    "dataVersion": "Version 1.5.2",
+    "charTreeProgression": [],
+    "skillTreesProgression": {},
+    "weaverTreeProgression": [],
+    "conditions": [],
+    "customConditions": [],
+    "activeBuffs": {
+      "buffs": [],
+      "ailments": [],
+      "skills": []
+    },
+    "buffSettings": [],
+    "completedQuests": [
+      128,
+      131,
+      129,
+      1,
+      3,
+      94,
+      39,
+      35,
+      9,
+      20,
+      24,
+      30,
+      32,
+      47,
+      46,
+      45,
+      57,
+      121,
+      117,
+      120,
+      124,
+      151,
+      169,
+      158
+    ]
+  }
+}

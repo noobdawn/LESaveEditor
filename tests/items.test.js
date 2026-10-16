@@ -178,6 +178,120 @@ test('fixed-pool variants alone keep unique rarity and LP, while true legendary 
   assert.throws(() => encodePlannerItem({ ...rageRing, lp: 1 }, { containerID: 10 }), {code: 'INVALID_LEGENDARY_POTENTIAL'});
 });
 
+const reportedGloves = JSON.parse(readFileSync(new URL('./fixtures/planner-Q9JP5wbn.json', import.meta.url), 'utf8')).data.equipment.hands;
+
+test('Q9JP5wbn gloves preserve the fixed variant in primordialAffix with its original T4 and native bytes', () => {
+  // Native v6: unique 479; six records, corruption sealed LAST. The first two are fixed FakeUniqueMods.
+  const golden = [6,1,2,3,4,4,3,9,209,9,252,51,1,223,42,205,146,164,135,122,93,178,134,
+    68,121,97,52,123,3,97,247,178,96,17,90,64,80,171,84,3,6];
+  const before = JSON.stringify(reportedGloves);
+  const encoded = encodePlannerItem(reportedGloves, { containerID: 9, individualId: 0x01020304 });
+  assert.deepEqual(encoded.data, golden);
+  assert.deepEqual(encodeItemData(decodeSavedItem(encoded)), golden);
+  assert.deepEqual(decodeSavedItem(encoded).affixes.map(a => [a.affixId, a.tier, a.roll]), [
+    [1145,5,97], [1147,4,3], [503,7,178], [17,7,90], [80,5,171], [1027,6,6],
+  ]);
+  const maximum = encodePlannerItem(reportedGloves, { containerID: 9, individualId: 0x01020304, maxRolls: true });
+  const rollOffsets = new Set([9,10,11,14,15,16,17,18,19,20,21,25,28,31,34,37,40]);
+  assert.deepEqual(maximum.data, golden.map((value, index) => rollOffsets.has(index) ? 255 : value));
+  assert.equal(JSON.stringify(reportedGloves), before);
+});
+
+test('fixed variants in the primordial slot retain unique rarity and LP while enforcing their unique count', () => {
+  const one = { id: rageRing.id, primordialAffix: { ...rageRing.sealedAffix, tier: 4, r: 19 }, lp: 3 };
+  const single = decodeSavedItem(encodePlannerItem(one, { containerID: 10 }));
+  assert.equal(single.rarity, 7); assert.equal(single.extraFlags, 3);
+  assert.deepEqual(single.affixes.map(a => [a.affixId, a.tier, a.roll]), [[1136, 4, 19]]);
+  const pair = { id: reportedGloves.id, sealedAffix: reportedGloves.sealedAffix, primordialAffix: reportedGloves.primordialAffix, lp: 3 };
+  const encoded = encodePlannerItem(pair, { containerID: 9, individualId: 16 }), decoded = decodeSavedItem(encoded);
+  assert.equal(decoded.rarity, 7); assert.equal(decoded.extraFlags, 3); assert.equal(encoded.data[22], 67);
+  assert.deepEqual(decoded.affixes.map(a => [a.affixId, a.tier]), [[1145, 5], [1147, 4]]);
+  const direct = encodePlannerItem({ id: pair.id, affixes: [pair.sealedAffix, pair.primordialAffix], lp: 3 }, { containerID: 9, individualId: 16 });
+  assert.deepEqual(direct.data, encoded.data);
+  assert.throws(() => encodePlannerItem({ id: pair.id, primordialAffix: pair.primordialAffix }, { containerID: 9 }), { code: 'INVALID_UNIQUE_VARIANT' });
+  assert.throws(() => encodePlannerItem({ ...pair, affixes: [{ id: affixId(1140), tier: 1 }] }, { containerID: 9 }), { code: 'INVALID_UNIQUE_VARIANT' });
+});
+
+test('corruption cannot remove fixed variants from uniques whose game definition preserves them', () => {
+  const catalog = JSON.parse(readFileSync(new URL('../web/src/core/game-item-data.json', import.meta.url), 'utf8'));
+  for (const unique of [477, 479, 486]) {
+    const definition = catalog.uniques[unique];
+    assert.equal(definition.corruptionPreservesDroppableAffixes, true);
+    const id = `U${LZString.compressToBase64(String(definition.subTypes[0]).padStart(3, '0') + String(unique).padStart(3, '0'))}`;
+    const variants = definition.specificAffixIds.slice(0, definition.specificAffixCount).map((value, index) => ({ id: affixId(value), tier: 1, r: 19 + index }));
+    for (const maxRolls of [false, true]) {
+      for (let count = 0; count < variants.length; count++) {
+        assert.throws(() => encodePlannerItem({ id, corrupted: true, affixes: variants.slice(0, count) }, { containerID: 10, maxRolls }), { code: 'INVALID_UNIQUE_VARIANT' }, `unique ${unique}, ${count} fixed variants`);
+      }
+      const complete = decodeSavedItem(encodePlannerItem({ id, corrupted: true, affixes: variants }, { containerID: 10, maxRolls }));
+      assert.deepEqual(complete.affixes.map(affix => [affix.affixId, affix.tier, affix.roll]), definition.specificAffixIds.slice(0, definition.specificAffixCount).map((value, index) => [value, 1, maxRolls ? 255 : 19 + index]));
+      assert.equal(complete.rarity, 7);
+      assert.ok(complete.flags & 16);
+    }
+  }
+  // The reported gloves express corruption through an affix rather than the boolean flag.
+  const incomplete = { ...reportedGloves, primordialAffix: undefined };
+  delete incomplete.primordialAffix;
+  assert.throws(() => encodePlannerItem(incomplete, { containerID: 9 }), { code: 'INVALID_UNIQUE_VARIANT' });
+});
+
+test('Exulis retains the existing corrupted fixed-pool count range instead of inheriting FakeUniqueMod preservation', () => {
+  const catalog = JSON.parse(readFileSync(new URL('../web/src/core/game-item-data.json', import.meta.url), 'utf8'));
+  const definition = catalog.uniques[469];
+  assert.equal(definition.corruptionPreservesDroppableAffixes, false);
+  const id = `U${LZString.compressToBase64('008469')}`;
+  const variants = definition.specificAffixIds.slice(0, 3).map((value, index) => ({ id: affixId(value), tier: 4, r: 37 + index }));
+  for (const count of [0, 1, 2]) {
+    const decoded = decodeSavedItem(encodePlannerItem({ id, affixes: variants.slice(0, count) }, { containerID: 11 }));
+    assert.deepEqual(decoded.affixes.map(affix => [affix.affixId, affix.tier, affix.roll]), definition.specificAffixIds.slice(0, count).map((value, index) => [value, 4, 37 + index]));
+    assert.ok(decoded.flags & 16);
+    if (count) assert.equal(decoded.rarity, 9);
+  }
+  assert.throws(() => encodePlannerItem({ id, affixes: variants }, { containerID: 11 }), { code: 'INVALID_UNIQUE_VARIANT' });
+});
+
+test('only a matching fixed FakeUniqueMod bypasses the T8 source check; ordinary and foreign variants remain rejected', () => {
+  for (const tier of [4, 8]) {
+    const foreign = { id: affixId(1147), tier };
+    for (const id of [rageRing.id, 'UAwRgrALA7CQ', baseId(4, 3)]) {
+      assert.throws(() => encodePlannerItem({ id, primordialAffix: foreign }, { containerID: 9 }), { code: 'INVALID_UNIQUE_VARIANT' });
+    }
+  }
+  for (const tier of [1, 4, 7]) {
+    assert.throws(() => encodePlannerItem({ id: baseId(4, 3), primordialAffix: { id: affixId(26), tier } }, { containerID: 9 }), { code: 'INVALID_PRIMORDIAL_AFFIX' });
+  }
+  const genuine = decodeSavedItem(encodePlannerItem({ id: baseId(4, 3), primordialAffix: { id: affixId(26), tier: 8 } }, { containerID: 9 }));
+  assert.deepEqual(genuine.affixes.map(a => [a.affixId, a.tier]), [[26, 8]]);
+  const invalidRoll = { ...reportedGloves, primordialAffix: { ...reportedGloves.primordialAffix, r: 256 } };
+  assert.throws(() => encodePlannerItem(invalidRoll, { containerID: 9, maxRolls: true }), { code: 'INVALID_ROLL' });
+});
+
+test('every source rejects a foreign FakeUniqueMod on ordinary equipment, ordinary uniques and set items', () => {
+  // Construct known ordinary unique/set IDs directly, avoiding reliance on display names.
+  const uniqueId = (subtype, unique) => `U${LZString.compressToBase64(String(subtype).padStart(3, '0') + String(unique).padStart(3, '0'))}`;
+  const ids = [baseId(21, 0), uniqueId(7, 66), 'UAwRgrALA7CQ', uniqueId(3, 79)];
+  for (const id of ids) for (const field of ['affixes', 'sealedAffix', 'primordialAffix', 'corruptedAffix']) {
+    for (const tier of [4, 8]) {
+      const variant = { id: affixId(1136), tier, r: 19 };
+      const record = { id, [field]: field === 'affixes' ? [variant] : variant };
+      assert.throws(() => encodePlannerItem(record, { containerID: 10, individualId: 16 }), error => ['INVALID_UNIQUE_VARIANT', 'UNSUPPORTED_ITEM_FEATURE'].includes(error.code), `${id}: ${field} T${tier}`);
+    }
+  }
+});
+
+test('matching fixed variants keep tier, roll and source ordering across all supported slots', () => {
+  for (const field of ['affixes', 'sealedAffix', 'primordialAffix', 'corruptedAffix']) for (const tier of [4, 8]) {
+    const variant = { id: affixId(1136), tier, r: 19 }, regular = { id: affixId(501), tier: 5, r: 73 };
+    const record = { id: rageRing.id, affixes: field === 'affixes' ? [variant, regular] : [regular], ...(field === 'affixes' ? {} : { [field]: variant }) };
+    const encoded = encodePlannerItem(record, { containerID: 10, individualId: 16 }), decoded = decodeSavedItem(encoded);
+    assert.deepEqual(decoded.affixes.map(a => [a.affixId, a.tier, a.roll]), field === 'corruptedAffix' ? [[501,5,73], [1136,tier,19]] : [[1136,tier,19], [501,5,73]]);
+    assert.equal(decoded.rarity, 9);
+    assert.equal(decoded.flags, field === 'corruptedAffix' ? 144 : 128);
+    assert.equal(decoded.extraFlags, field === 'corruptedAffix' ? 128 : 0);
+    assert.deepEqual(encodeItemData(decoded), encoded.data);
+  }
+});
+
 test('unique variant pool/count and unsupported seals remain strict and report the offending slot atomically', () => {
   assert.throws(() => encodePlannerItem({ id: rageRing.id }, {containerID: 10}), {code: 'INVALID_UNIQUE_VARIANT'});
   assert.throws(() => encodePlannerItem({ ...rageRing, sealedAffix: {id: affixId(26), tier: 3} }, {containerID: 10}), {code: 'UNSUPPORTED_ITEM_FEATURE'});

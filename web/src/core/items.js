@@ -193,15 +193,20 @@ export function encodePlannerItem(item, { containerID, inventoryPosition = { x: 
   const supportsVariants = unique?.specificAffixes && variantIds.length > 0 &&
     variantIds.every(id => [6, 7].includes(catalog.affixes[id]?.specialType));
   const sealedAffix = item.sealedAffix ? plannerAffix(item.sealedAffix) : null;
-  // LET stores a fixed-pool FakeUniqueMod variant in sealedAffix. In the game
-  // this is an ordinary affix record, not the rare item's regular-seal flag.
-  const sealedVariant = supportsVariants && sealedAffix && catalog.affixes[sealedAffix.affixId].specialType === 7 && variantIds.includes(sealedAffix.affixId);
+  // LET also uses sealedAffix/primordialAffix as slots for fixed FakeUniqueMod variants.
+  // Their source field does not make them a regular seal or a T8 primordial affix.
+  const isFixedVariant = affix => supportsVariants && affix && catalog.affixes[affix.affixId].specialType === 7 && variantIds.includes(affix.affixId);
+  const sealedVariant = isFixedVariant(sealedAffix);
   const corrupted = Boolean(flag(item.corrupted, 'corrupted') || unique?.preCorrupted || item.corruptedAffix || catalog.bases[identity.baseTypeId].subtypes[identity.subTypeId].corrupted);
   const ruined = flag(item.ruined, 'ruined');
   const duplicated = flag(item.duplicated, 'duplicated');
   flag(item.tradeable, 'tradeable'); // Source metadata; generated items remain untradeable.
   const primordialAffix = item.primordialAffix ? plannerAffix(item.primordialAffix) : null;
-  if (primordialAffix && primordialAffix.tier !== 8) fail('INVALID_PRIMORDIAL_AFFIX', '原初词缀必须为 T8 / A primordial affix must have tier 8.', { field: 'primordialAffix.tier' });
+  const primordialVariant = isFixedVariant(primordialAffix);
+  if (primordialAffix && catalog.affixes[primordialAffix.affixId].specialType === 7 && !primordialVariant) {
+    fail('INVALID_UNIQUE_VARIANT', '原初字段中的固有变体不属于此暗金 / The inherent variant in primordialAffix does not belong to this unique.', { field: 'primordialAffix' });
+  }
+  if (primordialAffix && !primordialVariant && primordialAffix.tier !== 8) fail('INVALID_PRIMORDIAL_AFFIX', '原初词缀必须为 T8 / A primordial affix must have tier 8.', { field: 'primordialAffix.tier' });
 
   if (isUnique && sealedAffix && !sealedVariant) fail('UNSUPPORTED_ITEM_FEATURE', '此暗金的封印词缀不在已验证变体池中 / This unique sealed affix is not in a verified variant pool.', { field: 'sealedAffix' });
   if (!Array.isArray(item.affixes ?? [])) fail('INVALID_AFFIXES', 'Affixes must be an array.');
@@ -214,6 +219,11 @@ export function encodePlannerItem(item, { containerID, inventoryPosition = { x: 
     ? [sealedAffix, primordialAffix, ...regularAffixes, corruptedAffix]
     : [sealedAffix, corruptedAffix, primordialAffix, ...regularAffixes]).filter(Boolean);
 
+  // A source slot never grants ownership: FakeUniqueMod belongs only to its unique's fixed pool.
+  // Check every source, including regular and corruption slots, before choosing rarity or flags.
+  if (affixes.some(affix => catalog.affixes[affix.affixId].specialType === 7 && !isFixedVariant(affix))) {
+    fail('INVALID_UNIQUE_VARIANT', '固有变体词缀不属于此暗金 / An inherent variant affix does not belong to this unique.', { field: 'affixes' });
+  }
   if (new Set(affixes.map(a => a.affixId)).size !== affixes.length) fail('DUPLICATE_AFFIX', 'Duplicate item affixes are not supported.');
   const descriptor = {
     ...identity, individualId: individualId ?? nextIndividualId(usedIds), duplicated,
@@ -225,7 +235,9 @@ export function encodePlannerItem(item, { containerID, inventoryPosition = { x: 
     if (unique.cocooned || (unique.preCorrupted && !supportsVariants) || (unique.specificAffixes && !supportsVariants)) fail('UNSUPPORTED_ITEM_FEATURE', 'This unique has additional game-defined item features that need separate validation.');
     if (supportsVariants) {
       const variants = affixes.filter(affix => variantIds.includes(affix.affixId));
-      if ((!corrupted && variants.length !== unique.specificAffixCount) || variants.length > unique.specificAffixCount || affixes.some(affix => catalog.affixes[affix.affixId].specialType === 7 && !variantIds.includes(affix.affixId))) {
+      // Some uniques retain every fixed variant even after corruption; Exulis does not.
+      const requiresCompleteVariants = !corrupted || unique.corruptionPreservesDroppableAffixes;
+      if ((requiresCompleteVariants && variants.length !== unique.specificAffixCount) || variants.length > unique.specificAffixCount || affixes.some(affix => catalog.affixes[affix.affixId].specialType === 7 && !variantIds.includes(affix.affixId))) {
         fail('INVALID_UNIQUE_VARIANT', '暗金变体词缀与当前游戏数据不匹配 / Unique variant affixes do not match the current game data.', { field: 'affixes' });
       }
     }

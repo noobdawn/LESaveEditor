@@ -41,7 +41,8 @@ for item in uniques:
         'preCorrupted': item['isPreCorrupted'],
         'specificAffixes': item['dropsSpecificLegendaryAffixes'],
         **({'specificAffixIds': item['droppableLegendaryAffixes'],
-            'specificAffixCount': item['droppableLegendaryAffixCount']}
+            'specificAffixCount': item['droppableLegendaryAffixCount'],
+            'corruptionPreservesDroppableAffixes': item['corruptionPreservesDroppableAffixes']}
            if item['dropsSpecificLegendaryAffixes'] else {}),
     }
 for item in affixes['singleAffixes'] + affixes['multiAffixes']:

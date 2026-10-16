@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import LZString from 'lz-string';
 import { createWorkflow } from '../web/src/core/workflow.js';
 import { parseSave, serializeSave } from '../web/src/core/save.js';
 import { decodeSavedItem, encodePlannerItem } from '../web/src/core/items.js';
@@ -147,4 +148,57 @@ test('a build with the Unsated Rage variant completes sync, review and download 
     assert.deepEqual(result.data.savedItems.find(item => Number(item.containerID) === 1), original.data.savedItems[0]);
     assert.equal(serializeSave(original), before);
   }
+});
+
+for (const maxRolls of [false, true]) test(`public Q9JP5wbn completes full sync, review and download with fixed variants in both auxiliary fields (maxRolls=${maxRolls})`, async () => {
+  const build = JSON.parse(readFileSync(new URL('./fixtures/planner-Q9JP5wbn.json', import.meta.url), 'utf8'));
+  const originalBuild = structuredClone(build);
+  const flow = createWorkflow({ fetchBuild: async () => build });
+  assert.equal(await flow.importBuild('https://www.lastepochtools.com/planner/zh/Q9JP5wbn'), true);
+  assert.equal(await flow.addFiles(files()), true);
+  flow.setOption('maxRolls', maxRolls);
+  for (const section of ['equipment', 'idols', 'blessings', 'passives', 'skills', 'skillBar']) assert.equal(flow.state.options[section], true, `${section} must stay included in this full-sync regression`);
+  const originals = [...flow.state.files.values()].map(entry => serializeSave(entry.original));
+  const originalCharacter = flow.state.files.get('1CHARACTERSLOT_BETA_9').original;
+  assert.equal(flow.synchronize(), true, flow.state.error?.message);
+  assert.equal(flow.state.step, 3);
+  assert.equal(flow.prepareReview(), true, flow.state.error?.message);
+  assert.equal(flow.state.step, 4);
+  assert.throws(() => flow.downloads(), { code: 'REVIEW_REQUIRED' });
+  flow.state.acknowledged = true;
+  const downloads = flow.downloads();
+  assert.deepEqual(downloads.map(download => download.name), ['1CHARACTERSLOT_BETA_9']);
+  const result = parseSave(downloads[0].text, downloads[0].name);
+  assert.equal(String(result.data.level), '100');
+  assert.equal(String(result.data.characterClass), '4');
+  assert.equal(String(result.data.chosenMastery), '2');
+
+  // Assert concrete game bytes through the decoder, not encodePlannerItem's
+  // own result: these are fixed FakeUniqueMod variants despite LET placing
+  // 1147 T4 in primordialAffix. The native corruption block must remain last.
+  const hands = decodeSavedItem(result.data.savedItems.find(item => Number(item.containerID) === 6));
+  assert.equal(hands.supported, true);
+  assert.equal(hands.uniqueId, 479);
+  assert.equal(hands.rarity, 9);
+  assert.equal(hands.extraFlags, 128);
+  assert.deepEqual(hands.affixes.map(affix => [affix.affixId, affix.tier, affix.roll]), [
+    [1145, 5, maxRolls ? 255 : 97], [1147, 4, maxRolls ? 255 : 3],
+    [503, 7, maxRolls ? 255 : 178], [17, 7, maxRolls ? 255 : 90], [80, 5, maxRolls ? 255 : 171],
+    [1027, 6, maxRolls ? 255 : 6],
+  ]);
+  const slotContainers = { head: 2, chest: 3, weapon1: 4, weapon2: 5, hands: 6, waist: 7, feet: 8, ring2: 9, ring1: 10, amulet: 11, relic: 12, idol_altar: 123 };
+  for (const [slot, planner] of Object.entries(build.data.equipment)) {
+    if (!planner) continue;
+    const saved = decodeSavedItem(result.data.savedItems.find(item => Number(item.containerID) === slotContainers[slot]));
+    assert.equal(saved.supported, true, `${slot} must be present and decodable`);
+    const supplied = [...(planner.affixes ?? []), planner.sealedAffix, planner.primordialAffix, planner.corruptedAffix].filter(Boolean);
+    const expected = supplied.map(affix => [Number(LZString.decompressFromBase64(affix.id.slice(1))), affix.tier, maxRolls ? 255 : Math.round(affix.r ?? 128)]).sort((a, b) => a[0] - b[0]);
+    const actual = saved.affixes.map(affix => [affix.affixId, affix.tier, affix.roll]).sort((a, b) => a[0] - b[0]);
+    assert.deepEqual(actual, expected, `${slot} must retain every explicit affix and its actual tier`);
+    assert.deepEqual(saved.implicitRolls, Array.from({ length: 3 }, (_, i) => maxRolls ? 255 : Math.round(planner.ir?.[i] ?? 128)), `${slot} implicit rolls`);
+    if (saved.uniqueRolls) assert.deepEqual(saved.uniqueRolls, Array.from({ length: 8 }, (_, i) => maxRolls ? 255 : Math.round(planner.ur?.[i] ?? 128)), `${slot} unique rolls`);
+  }
+  assert.deepEqual(result.data.savedItems.find(item => Number(item.containerID) === 1), originalCharacter.data.savedItems[0]);
+  assert.deepEqual([...flow.state.files.values()].map(entry => serializeSave(entry.original)), originals, 'original character and stash are immutable');
+  assert.deepEqual(build, originalBuild, 'imported planner data is immutable');
 });
