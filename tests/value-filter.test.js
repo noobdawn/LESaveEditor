@@ -85,7 +85,7 @@ test('Q9JP5wbn fixed glove variants retain their source tiers without becoming p
   assert.ok(createValueFilterDraft(truePrimordial).analysis.warnings.some(w => w.code === 'UNRESOLVED_TARGET' && /T8/.test(w.message.en)));
 });
 
-test('same-shape idol pools allow recombination but require one selected prefix and suffix', () => {
+test('shared idol pools allow recombination but require one selected prefix and suffix', () => {
   const d = cleanDraft();
   const candidates = Object.values(catalog.affixes).filter(a => isValueIdolAffix(a, 25));
   const prefixes = candidates.filter(a => a.type === 0).slice(0, 2).map(a => a.id), suffixes = candidates.filter(a => a.type === 1).slice(0, 2).map(a => a.id);
@@ -94,7 +94,7 @@ test('same-shape idol pools allow recombination but require one selected prefix 
   assert.equal(result(d, idol([prefixes[0], suffixes[1]])), 'idol_double');
   assert.equal(result(d, idol(prefixes)), 'idol_single');
   assert.equal(result(d, idol([suffixes[0]])), 'idol_single');
-  assert.equal(result(d, { ...idol([prefixes[0], suffixes[1]]), baseTypeId: 26 }), 'idol_other');
+  assert.equal(result(d, { ...idol([prefixes[0], suffixes[1]]), baseTypeId: 22 }), 'equipment_other');
   d.groups.idol_double.show = false;
   assert.equal(evaluateValueItem(d, idol([prefixes[0], suffixes[1]])).outcome, 'HIDE');
 });

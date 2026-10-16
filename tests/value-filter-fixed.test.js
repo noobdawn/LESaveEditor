@@ -171,3 +171,34 @@ test('idol needs and fallbacks match items without equipment rarity and hide nam
   assert.match(output.xml, /<nameOverride>Hide selected idol types<\/nameOverride>/);
   assert.equal(evaluateValueItem(d, { baseTypeId: 30, subTypeId: 4 }).outcome, 'HIDE');
 });
+
+test('all selected idol shapes share exactly one double rule and one single rule', () => {
+  const d = draft();
+  d.idols = [
+    { id: 'small', baseTypeId: 25, subTypeId: 0, affixIds: [108, 114], enabled: true },
+    { id: 'large', baseTypeId: 30, subTypeId: 0, affixIds: [941, 287], enabled: true },
+    { id: 'stout', baseTypeId: 28, subTypeId: 0, affixIds: [107, 117], enabled: true },
+    { id: 'disabled', baseTypeId: 26, subTypeId: 0, affixIds: [842], enabled: false },
+  ];
+  const output = generateValueFilter(d);
+  for (const groupId of ['idol_double', 'idol_single']) {
+    const rules = output.rules.filter(rule => rule.groupId === groupId);
+    assert.equal(rules.length, 1);
+    assert.deepEqual(rules[0].conditions.find(c => c.type === 'subtype').baseTypeIds, [25,26,27,28,29,30,31,32,33]);
+    assert.equal(rules[0].conditions.some(c => c.type === 'rarity'), false);
+    assert.equal(output.groups.find(group => group.id === groupId).ruleCount, 1);
+  }
+  const idol = (baseTypeId, ids) => ({ baseTypeId, affixes: ids.map(id => ({ id, tier: 1 })) });
+  assert.equal(evaluateValueItem(d, idol(29, [108,114])).groupId, 'idol_double', 'selected affixes apply to another compatible shape');
+  assert.equal(evaluateValueItem(d, idol(30, [941,117])).groupId, 'idol_double', 'a valid pair can draw affixes from different selected needs');
+  assert.equal(evaluateValueItem(d, idol(26, [117])).groupId, 'idol_single');
+  assert.equal(evaluateValueItem(d, idol(30, [117,287])).groupId, 'idol_single', 'two suffixes cannot satisfy the double group');
+  assert.equal(evaluateValueItem(d, idol(26, [842])).groupId, 'idol_other', 'disabled needs do not contribute affixes');
+  d.groups.idol_double.show = false;
+  assert.equal(evaluateValueItem(d, idol(30, [941,117])).outcome, 'HIDE', 'double-group HIDE precedes the shared single rule');
+  d.idols = [{ id: 'prefix-only', baseTypeId: 25, subTypeId: 0, affixIds: [108], enabled: true }];
+  assert.equal(generateValueFilter(d).rules.filter(rule => rule.groupId === 'idol_double').length, 0);
+  assert.equal(generateValueFilter(d).rules.filter(rule => rule.groupId === 'idol_single').length, 1);
+  d.idols = [];
+  assert.equal(generateValueFilter(d).rules.filter(rule => ['idol_double','idol_single'].includes(rule.groupId)).length, 0);
+});

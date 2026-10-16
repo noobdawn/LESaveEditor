@@ -9,6 +9,7 @@ import { EQUIPMENT_TYPES, FILTER_VERSION, MAX_FILTER_RULES, FilterError, filterL
 export const COMMON_AFFIX_GROUPS = commonAffixes.groups;
 export const VALUE_FILTER_DEFAULT_OPTIONS = Object.freeze({ rareUniqueThreshold: 0.9, rareSetThreshold: 0.65 });
 const label = (zh, en) => ({ zh, en });
+const MISC_FILTER_COLOR = 14;
 const group = (id, zh, en, descriptionZh, descriptionEn, color, emphasized = false, show = true) => ({ id, name: label(zh, en), description: label(descriptionZh, descriptionEn), defaults: { show, color, emphasized } });
 /** Fixed equipment categories share native item-type and affix-ID sets. */
 export const EQUIPMENT_FILTER_GROUPS = Object.freeze([
@@ -20,8 +21,8 @@ export const EQUIPMENT_FILTER_GROUPS = Object.freeze([
 export const VALUE_FILTER_GROUPS = Object.freeze([
   ...EQUIPMENT_FILTER_GROUPS,
   group('unique_needed', '需求暗金', 'Needed uniques', '按暗金编号保留，优先于稀有度与潜能。', 'Selected unique identities take precedence over rarity and potential.', 7, true),
-  group('idol_double', '双有效词缀神像', 'Two useful idol affixes', '同形状的所选需求中，一条前缀和一条后缀同时符合，允许重组。', 'A selected prefix and suffix of the same shape; selected pairs may recombine.', 9, true),
-  group('idol_single', '单有效词缀神像', 'One useful idol affix', '符合一个所选词缀，未达到双词缀档。', 'One selected affix without reaching the two-affix group.', 10),
+  group('idol_double', '双有效词缀神像', 'Two useful idol affixes', '所有神像共用所选词缀，至少符合一条前缀和一条后缀。', 'All idol types share selected affixes; requires one selected prefix and one selected suffix.', 9, true),
+  group('idol_single', '单有效词缀神像', 'One useful idol affix', '所有神像共用所选词缀，至少符合一条，未达到双词缀档。', 'All idol types share selected affixes; at least one selected affix without reaching the two-affix group.', 10),
   group('unique_rare', '高价值暗金', 'High-value uniques', '随机池稀有度达到门槛，不代表 Boss 掉率或价格。', 'Meets the random-pool rarity threshold; not a boss drop rate or price.', 8, true),
   group('unique_high_lp', '高潜暗金（2–4）', 'High-potential uniques (2–4)', '拥有 2–4 传奇潜能的普通暗金；不包含 Weaver’s Will。', 'Ordinary uniques with 2–4 legendary potential; excludes Weaver’s Will.', 5, true),
   group('set_valuable', '高价值套装', 'Valuable set items', '配装需要、手动选择，或随机池稀有度达到门槛的套装。', 'Needed or selected set items, or sets meeting the random-pool rarity threshold.', 16, true),
@@ -29,11 +30,11 @@ export const VALUE_FILTER_GROUPS = Object.freeze([
   group('set_common', '一般套装', 'Other set items', '其余套装装备。', 'Remaining set items.', 17),
   group('equipment_other', '其他装备', 'Other equipment', '未命中以上价值组的普通、魔法、稀有与崇高装备。', 'Remaining normal, magic, rare and exalted equipment.', 1, false, false),
   group('idol_other', '其他神像', 'Other idols', '未命中所选神像词缀的神像。', 'Idols without selected matching affixes.', 1, false, false),
-  group('glyph', '雕文', 'Glyphs', '所有雕文。', 'All glyphs.', 14),
-  group('rune', '符文', 'Runes', '所有符文。', 'All runes.', 13),
-  group('shard', '词缀碎片', 'Affix shards', '所有词缀碎片。', 'All affix shards.', 2),
-  group('key', '钥匙与特殊材料', 'Keys and special materials', '游戏 AllKeys 分类，包含钥匙及部分特殊材料。', 'The game’s AllKeys category, including keys and some special materials.', 12, true),
-  group('altar', '神像祭坛', 'Idol altars', '祭坛独立保留，不随普通装备兜底隐藏。', 'Altars have their own group, separate from other equipment.', 15),
+  group('glyph', '雕文', 'Glyphs', '所有雕文。', 'All glyphs.', MISC_FILTER_COLOR),
+  group('rune', '符文', 'Runes', '所有符文。', 'All runes.', MISC_FILTER_COLOR),
+  group('shard', '词缀碎片', 'Affix shards', '所有词缀碎片。', 'All affix shards.', MISC_FILTER_COLOR),
+  group('key', '钥匙与特殊材料', 'Keys and special materials', '游戏 AllKeys 分类，包含钥匙及部分特殊材料。', 'The game’s AllKeys category, including keys and some special materials.', MISC_FILTER_COLOR, true),
+  group('altar', '神像祭坛', 'Idol altars', '祭坛独立保留，不随普通装备兜底隐藏。', 'Altars have their own group, separate from other equipment.', MISC_FILTER_COLOR),
 ]);
 const BY_GROUP = Object.fromEntries(VALUE_FILTER_GROUPS.map(g => [g.id, g]));
 const GEAR_TYPES = Array.from({ length: 25 }, (_, i) => i);
@@ -207,11 +208,11 @@ export function generateValueFilter(draft) {
   add('equipment_crafting', 'fixed', [...equipment, affix(high, 5), affix(useful, 5, 2)]);
   add('equipment_leveling', 'fixed', [...equipment, affix(high), affix(useful, 1, 3)]);
   add('equipment_other', 'remaining', equipment);
-  for (const [baseTypeId, selected] of idolPools) {
-    const scope = [subtype([baseTypeId])];
-    add('idol_double', `shape${baseTypeId}`, [...scope, affix(selected.filter(id => catalog.affixes[id].type === 0)), affix(selected.filter(id => catalog.affixes[id].type === 1))]);
-    add('idol_single', `shape${baseTypeId}`, [...scope, affix(selected)]);
-  }
+  // All nine idol types share selected affixes. Keep one native rule per useful-affix category.
+  const idolAffixes = sorted([...idolPools.values()].flat());
+  const idolScope = [subtype(IDOL_TYPES)];
+  add('idol_double', 'selected', [...idolScope, affix(idolAffixes.filter(id => catalog.affixes[id].type === 0)), affix(idolAffixes.filter(id => catalog.affixes[id].type === 1))]);
+  add('idol_single', 'selected', [...idolScope, affix(idolAffixes)]);
   add('idol_other', 'remaining', [subtype(IDOL_TYPES)]);
   for (const kind of ['glyph', 'rune', 'shard', 'key']) add(kind, 'all', [{ type: 'resource', kind }]);
   add('altar', 'all', [subtype([41])]);

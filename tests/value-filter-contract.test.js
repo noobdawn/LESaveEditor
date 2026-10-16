@@ -339,3 +339,31 @@ test('exported idol XML uses type and class requirements without rarity and pres
   assert.equal(needs.match({ equipmentType: 'IDOL_1x1_ETERRA', affixes: [{ id: 108, tier: 1 }] }).name, 'One useful idol affix');
   for (const rule of needs.rules.filter(rule => /idol/i.test(text(rule, 'nameOverride')))) assert.ok(children(child(rule, 'conditions'), 'Condition').every(condition => condition.attrs['i:type'] !== 'RarityCondition'));
 });
+
+test('native XML merges useful idol rules across all nine types while keeping prefix/suffix matching exact', () => {
+  const input = draft();
+  input.idols = [
+    { id: 'small', baseTypeId: 25, subTypeId: 0, affixIds: [108,114], enabled: true },
+    { id: 'large', baseTypeId: 30, subTypeId: 0, affixIds: [941,287], enabled: true },
+    { id: 'stout', baseTypeId: 28, subTypeId: 0, affixIds: [107,117], enabled: true },
+  ];
+  const filter = exportedFilter(input);
+  for (const name of ['Two useful idol affixes', 'One useful idol affix']) {
+    const rules = filter.rules.filter(rule => text(rule, 'nameOverride') === name);
+    assert.equal(rules.length, 1);
+    const scope = children(child(rules[0], 'conditions'), 'Condition').find(condition => condition.attrs['i:type'] === 'SubTypeCondition');
+    assert.equal(children(child(scope, 'type'), 'EquipmentType').length, 9);
+    assert.equal(children(child(scope, 'subTypes'), 'int').length, 0);
+  }
+  const item = (equipmentType, ids) => ({ equipmentType, affixes: ids.map(id => ({ id, tier: 1 })) });
+  assert.equal(filter.match(item('IDOL_3x1', [108,114])).name, 'Two useful idol affixes');
+  assert.equal(filter.match(item('IDOL_1x3', [941,117])).name, 'Two useful idol affixes');
+  assert.equal(filter.match(item('IDOL_1x1_LAGON', [117])).name, 'One useful idol affix');
+  assert.equal(filter.match(item('IDOL_1x3', [117,287])).name, 'One useful idol affix');
+  input.groups.idol_double.show = false;
+  const hidden = exportedFilter(input).match(item('IDOL_1x3', [941,117]));
+  assert.equal(hidden.name, 'Two useful idol affixes'); assert.equal(hidden.action, 'HIDE');
+  input.exclusions.idolTypeIds = [30];
+  assert.equal(exportedFilter(input).match(item('IDOL_1x3', [941,117])).name, 'Hide selected idol types');
+  assert.equal(filter.match({ ...item('HELMET', [108,114]), rarity: 'RARE' }).name, 'Other equipment');
+});
