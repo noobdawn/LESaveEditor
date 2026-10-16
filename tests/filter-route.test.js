@@ -7,7 +7,8 @@ import * as planner from '../web/src/core/planner.js';
 import * as world from '../web/src/core/world.js';
 import * as campaign from '../web/src/core/campaign.js';
 import { getEquipment } from '../web/src/core/equipment.js';
-import { createValueFilterDraft as createFilterDraft, generateValueFilter as generateFilter } from '../web/src/core/value-filter.js';
+import { createValueFilterDraft as createFilterDraft, generateValueFilter as generateFilter, restoreValueFilterDraft } from '../web/src/core/value-filter.js';
+import { MAX_FILTER_XML_BYTES } from '../web/src/core/filter-settings.js';
 import { messages, classes, masteries } from '../web/src/i18n.js';
 import { icon } from '../web/src/icons.js';
 import plannerData from '../web/src/data/planner-game-data.js';
@@ -33,7 +34,7 @@ function routeHarness(fetchBuild = async () => build()) {
   };
   for (const selector of ['#app', '#main-content', '#brand-link', '#save-input']) element(selector);
   const context = vm.createContext({
-    ...planner, ...world, ...campaign, getEquipment, createFilterDraft,
+    ...planner, ...world, ...campaign, getEquipment, createFilterDraft, restoreValueFilterDraft, MAX_FILTER_XML_BYTES,
     createWorkflow: () => createWorkflow({ fetchBuild }), SYNC_OPTIONS,
     messages, classes, masteries, icon, plannerData,
     renderFilterWorkbench: state => { workbenchCalls.push({ kind: 'render', state }); return '<div class="filter-workbench"></div>'; },
@@ -54,7 +55,7 @@ function routeHarness(fetchBuild = async () => build()) {
   vm.runInContext(source + `
     const originalRender = render;
     render = () => {};
-    globalThis.probe = { state, flow, view, filterView, importSelectedBuild, bindEvents,
+    globalThis.probe = { state, flow, view, filterView, importSelectedBuild, importFilterFile, filterPage, bindEvents,
       linkPage, syncPage, uploadPage, actions, render: originalRender };
   `, context, { filename: 'main.js' });
   return { ...context.probe, element, elements, lists, windowEvents, workbenchCalls, downloads };
@@ -189,4 +190,73 @@ test('failed replacement cannot reactivate the previous build, and dirty filters
   assert.equal(ui.state.step, 0);
   assert.equal(ui.flow.synchronize(), false);
   assert.equal(ui.state.error.code, 'NEED_BUILD');
+});
+
+test('XML settings import works offline, restores language and styles, and never loads or replaces save data', async () => {
+  let requests = 0;
+  const ui = routeHarness(async () => { requests++; throw new Error('No network allowed'); });
+  const saved = createFilterDraft(build()); saved.language = 'en'; saved.name = 'Imported filter';
+  saved.groups.glyph.color = 9; saved.exclusions.equipmentTypeIds = [12,13];
+  const xml = generateFilter(saved).xml;
+  assert.match(ui.linkPage(), /继续编辑过滤器/);
+  assert.equal(await ui.importFilterFile({ name: 'filter.xml', size: xml.length, text: async () => xml }), true);
+  assert.equal(requests, 0); assert.equal(ui.state.build, null); assert.equal(ui.state.files.size, 0);
+  assert.equal(ui.view.mode, 'filter'); assert.equal(ui.filterView.filterStep, 5);
+  assert.equal(ui.filterView.filterDraft.name, 'Imported filter');
+  assert.equal(ui.filterView.filterDraft.groups.glyph.color, 9);
+  assert.deepEqual(Array.from(ui.filterView.filterDraft.exclusions.equipmentTypeIds), [12,13]);
+  assert.equal(ui.filterView.filterDirty, false); assert.equal(ui.view.filterImporting, false);
+  ui.render();
+  assert.equal(ui.filterView.language, 'en');
+  assert.match(ui.filterPage(), /Create loot filter/);
+  assert.match(ui.filterPage(), /Level 100/);
+  assert.match(ui.filterPage(), /https:\/\/www.lastepochtools.com\/planner\/om6w3Ypq/);
+  ui.filterView.filterDraft.groups.glyph.color = 14;
+  assert.equal(restoreValueFilterDraft(generateFilter(ui.filterView.filterDraft).xml).groups.glyph.color, 14);
+});
+
+test('failed XML replacement and oversize files preserve the dirty draft and loaded save workflow', async () => {
+  const ui = routeHarness(); await ui.importSelectedBuild(URL_A, 'filter');
+  const original = ui.filterView.filterDraft, originalBuild = ui.state.build;
+  ui.state.files.set('keep', { original: { kind: 'character' } });
+  ui.filterView.filterDirty = true; ui.filterView.filterStep = 2;
+  const oldXml = generateFilter(original).xml.replace(/<!-- LESaveEditor-settings:[\s\S]*?-->/g, '');
+  assert.equal(await ui.importFilterFile({ size: oldXml.length, text: async () => oldXml }), false);
+  assert.equal(ui.state.error.code, 'FILTER_SETTINGS_NOT_FOUND');
+  assert.equal(ui.filterView.filterDraft, original); assert.equal(ui.filterView.filterDirty, true);
+  assert.equal(ui.filterView.filterStep, 2); assert.equal(ui.state.build, originalBuild);
+  assert.equal(ui.state.files.size, 1);
+  assert.equal(await ui.importFilterFile({ size: MAX_FILTER_XML_BYTES + 1, text: () => { throw new Error('Must not read'); } }), false);
+  assert.equal(ui.filterView.filterDraft, original); assert.equal(ui.view.filterImporting, false);
+});
+
+test('XML import keeps the prior raw Build separate and returning to its URL restores that Build draft', async () => {
+  let requests = 0;
+  const ui = routeHarness(async () => { requests++; return build(); });
+  await ui.importSelectedBuild(URL_A, 'filter');
+  const originalBuild = ui.state.build;
+  const other = createFilterDraft(build('BBBBBBBB', URL_B)), xml = generateFilter(other).xml;
+  assert.equal(await ui.importFilterFile({ size: xml.length, text: async () => xml }), true);
+  assert.equal(ui.filterView.filterDraft.build.id, 'BBBBBBBB');
+  assert.equal(ui.state.build, originalBuild); assert.equal(requests, 1);
+  await ui.importSelectedBuild(URL_A, 'filter');
+  assert.equal(requests, 1); assert.equal(ui.filterView.filterDraft.build.id, 'om6w3Ypq');
+  assert.equal(ui.filterView.filterStep, 1);
+});
+
+test('XML import controls avoid a build URL requirement and prevent competing imports while reading', async () => {
+  const ui = routeHarness(), pending = deferred();
+  const input = ui.element('#filter-xml-input', { files: [], click() { this.clicked = true; } });
+  const button = ui.element('#filter-import');
+  ui.bindEvents(); button.listeners.click(); assert.equal(input.clicked, true);
+  const xml = generateFilter(createFilterDraft(build())).xml;
+  input.files = [{ size: xml.length, text: () => pending.promise }]; input.value = 'filter.xml';
+  const importing = input.listeners.change({ target: input });
+  assert.equal(input.value, ''); assert.equal(ui.view.filterImporting, true);
+  assert.match(ui.linkPage(), /id="filter-import" disabled/);
+  assert.equal(await ui.importFilterFile({ size: 1, text: () => 'ignored' }), false);
+  await ui.importSelectedBuild(URL_A, 'filter'); assert.equal(ui.state.build, null);
+  pending.resolve(xml); await importing;
+  assert.equal(ui.filterView.filterDraft.build.id, 'om6w3Ypq');
+  assert.equal(ui.view.filterImporting, false);
 });

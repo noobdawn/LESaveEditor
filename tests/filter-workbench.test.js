@@ -269,3 +269,17 @@ test('color and emphasis update actual preview styles without replacing focused 
   assert.equal(ui.control(`[data-filter-group-preview="${id}"]`).style.getPropertyValue('--loot-color'),expected);
   assert.match(ui.document.html,/颜色预览/);
 });
+
+
+test('restored settings keep original Build candidates available without mislabeling manual affixes',()=>{
+  const draft=createValueFilterDraft(build);
+  draft.highAffixIds=draft.highAffixIds.filter(id=>id!==22);draft.highAffixIds.push(1083);
+  const restored=filterCore.restoreValueFilterDraft(generateValueFilter(draft).xml);
+  const ui=workbench({step:2,patch:restored});
+  assert.equal(ui.inPool('toggle','high',22).checked,false);
+  assert.equal(ui.inPool('toggle','high',1083).checked,true);
+  assert.ok(ui.state.filterUi.initial.high.includes(22));
+  assert.ok(!ui.state.filterUi.initial.high.includes(1083));
+  ui.check(ui.inPool('toggle','high',22),true);
+  assert.ok(ui.state.filterDraft.highAffixIds.includes(22));
+});

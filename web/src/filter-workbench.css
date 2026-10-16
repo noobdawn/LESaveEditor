@@ -175,3 +175,9 @@
 @media(max-width:720px){.filter-workbench .filter-type-grid{grid-template-columns:1fr}.filter-workbench .filter-steps{grid-template-columns:repeat(5,minmax(0,1fr))}.filter-workbench .filter-steps button strong{font-size:11px}}
 
 .filter-workbench .filter-fallback-note{padding:0 24px 20px;margin:0}
+
+.filter-route .filter-import-card{margin-top:20px}
+.filter-route .filter-import-card h2{font-size:18px;margin:0}
+.filter-route .filter-import-card .button{margin-top:16px}
+.filter-route .filter-route-heading-actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end;flex-shrink:0}
+@media(max-width:600px){.filter-route .filter-route-heading{align-items:flex-start;flex-direction:column;gap:16px}.filter-route .filter-route-heading-actions{justify-content:flex-start}}

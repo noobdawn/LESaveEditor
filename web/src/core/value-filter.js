@@ -2,7 +2,8 @@ import LZString from 'lz-string';
 import catalog from '../data/filter-catalog.json' with { type: 'json' };
 import commonAffixes from '../data/filter-common-affixes.json' with { type: 'json' };
 import itemCatalog from './game-item-data.json' with { type: 'json' };
-import { normalizePlannerBuild } from './planner.js';
+import { normalizePlannerBuild, parsePlannerUrl } from './planner.js';
+import { encodeFilterSettings, decodeFilterSettings } from './filter-settings.js';
 import { resolvePlannerItemId } from './items.js';
 import { EQUIPMENT_TYPES, FILTER_VERSION, MAX_FILTER_RULES, FilterError, filterLabel } from './loot-filter.js';
 
@@ -113,8 +114,8 @@ export function createValueFilterDraft(input) {
   const highAffixIds = sorted(high), mediumAffixIds = sorted(COMMON_AFFIX_GROUPS.flatMap(g => g.affixIds).filter(id => !highAffixIds.includes(id)));
   const groups = Object.fromEntries(VALUE_FILTER_GROUPS.map(g => [g.id, { ...g.defaults }]));
   if (hasUnresolvedTargets) { groups.equipment_other.show = true; groups.idol_other.show = true; }
-  return { schemaVersion: 3, name: build.id ? `Build ${build.id}` : 'Build 价值过滤器', language: 'zh', build: { id: build.id, sourceUrl: build.sourceUrl, dataVersion: build.dataVersion, classId: Number(build.data.bio.characterClass) }, uniqueIds: sorted(uniqueIds), setIds: sorted(setIds), highAffixIds, mediumAffixIds, idols: [...idolRows.values()],
-    analysis: { targets, warnings, hasUnresolvedTargets, build: { id: build.id, sourceUrl: build.sourceUrl, dataVersion: build.dataVersion, classId: Number(build.data.bio.characterClass) }, summary: { equipmentCount: records.filter(r => r.slot !== 'idol').length, idolCount: records.filter(r => r.slot === 'idol').length, uniqueCount: unique(uniqueIds).length, setCount: unique(setIds).length, highAffixCount: highAffixIds.length } }, groups, exclusions: { equipmentTypeIds: [], idolTypeIds: [], idolBaseKeys: [] }, options: { ...VALUE_FILTER_DEFAULT_OPTIONS } };
+  return { schemaVersion: 3, name: build.id ? `Build ${build.id}` : 'Build 价值过滤器', language: 'zh', build: { id: build.id, sourceUrl: build.sourceUrl, dataVersion: build.dataVersion, classId: Number(build.data.bio.characterClass), masteryId: Number(build.data.bio.chosenMastery), level: Number(build.data.bio.level) }, uniqueIds: sorted(uniqueIds), setIds: sorted(setIds), highAffixIds, mediumAffixIds, idols: [...idolRows.values()],
+    analysis: { targets, warnings, hasUnresolvedTargets, build: { id: build.id, sourceUrl: build.sourceUrl, dataVersion: build.dataVersion, classId: Number(build.data.bio.characterClass), masteryId: Number(build.data.bio.chosenMastery), level: Number(build.data.bio.level) }, summary: { equipmentCount: records.filter(r => r.slot !== 'idol').length, idolCount: records.filter(r => r.slot === 'idol').length, uniqueCount: unique(uniqueIds).length, setCount: unique(setIds).length, highAffixCount: highAffixIds.length } }, groups, exclusions: { equipmentTypeIds: [], idolTypeIds: [], idolBaseKeys: [] }, options: { ...VALUE_FILTER_DEFAULT_OPTIONS } };
 }
 
 const rarity = rarities => ({ type: 'rarity', rarities });
@@ -245,7 +246,7 @@ function conditionXml(c) {
 }
 function serialize(rules, draft) {
   const body = [...rules].reverse().map(rule => `    <Rule>\n      <type>${rule.type}</type>\n      <conditions>\n${rule.conditions.map(conditionXml).join('\n')}\n      </conditions>\n      <recolor>${rule.type === 'SHOW'}</recolor>\n      <color>${rule.style.color}</color>\n      <isEnabled>true</isEnabled>\n      <levelDependent_deprecated>false</levelDependent_deprecated>\n      <minLvl_deprecated>0</minLvl_deprecated>\n      <maxLvl_deprecated>0</maxLvl_deprecated>\n      <emphasized>${rule.style.emphasized}</emphasized>\n      <nameOverride>${escapeXml(filterLabel(rule.name, draft.language))}</nameOverride>\n      <SoundId>0</SoundId>\n      <MapIconId>0</MapIconId>\n      <BeamOverride>false</BeamOverride>\n      <BeamSizeOverride>NONE</BeamSizeOverride>\n      <BeamColorOverride>0</BeamColorOverride>\n      <Order>${rule.order}</Order>\n    </Rule>`).join('\n');
-  return `<ItemFilter xmlns:i="http://www.w3.org/2001/XMLSchema-instance">\n  <name>${escapeXml(draft.name)}</name>\n  <filterIcon>0</filterIcon>\n  <filterIconColor>0</filterIconColor>\n  <description>${escapeXml(draft.language === 'en' ? 'Four fixed equipment categories and selected hidden item types.' : '四类固定装备规则与所选类型隐藏。')}</description>\n  <lastModifiedInVersion>${itemCatalog.gameVersion}</lastModifiedInVersion>\n  <lootFilterVersion>${FILTER_VERSION}</lootFilterVersion>\n  <rules>\n${body}\n  </rules>\n</ItemFilter>\n`;
+  return `<ItemFilter xmlns:i="http://www.w3.org/2001/XMLSchema-instance">\n  <name>${escapeXml(draft.name)}</name>\n  <filterIcon>0</filterIcon>\n  <filterIconColor>0</filterIconColor>\n  <description>${escapeXml(draft.language === 'en' ? 'Four fixed equipment categories and selected hidden item types.' : '四类固定装备规则与所选类型隐藏。')}</description>\n  <lastModifiedInVersion>${itemCatalog.gameVersion}</lastModifiedInVersion>\n  <lootFilterVersion>${FILTER_VERSION}</lootFilterVersion>\n${encodeFilterSettings(getValueFilterSettings(draft))}\n  <rules>\n${body}\n  </rules>\n</ItemFilter>\n`;
 }
 
 function compare(actual, operation, expected) {
@@ -303,4 +304,83 @@ function validateExclusions(value) {
   const validBases = new Set(FILTER_IDOL_BASES.map(base => base.key));
   if (!Array.isArray(value.idolBaseKeys) || value.idolBaseKeys.some(key => typeof key !== 'string' || !validBases.has(key))) fail('INVALID_FILTER_EXCLUSIONS', '隐藏神像底材无效', 'Invalid hidden idol base');
   return { equipmentTypeIds, idolTypeIds, idolBaseKeys: [...new Set(value.idolBaseKeys)] };
+}
+
+const settingsRecord = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+function settingsText(value, max, field) {
+  if (typeof value !== 'string' || value.length > max) fail('INVALID_FILTER_SETTINGS', `构造设置字段无效：${field}`, `Invalid saved settings field: ${field}`);
+  return value;
+}
+function settingsBuild(value) {
+  if (!settingsRecord(value)) fail('INVALID_FILTER_SETTINGS', '原配装信息无效', 'Invalid saved build information');
+  const result = {};
+  if (value.id != null) {
+    if (typeof value.id !== 'string' || !/^[A-Za-z0-9]{8}$/.test(value.id)) fail('INVALID_FILTER_SETTINGS', '原配装分享码无效', 'Invalid saved build share code');
+    result.id = value.id;
+  }
+  if (value.sourceUrl != null) {
+    const parsed = parsePlannerUrl(settingsText(value.sourceUrl, 2048, 'sourceUrl'));
+    if (result.id && result.id !== parsed.id) fail('INVALID_FILTER_SETTINGS', '原配装链接与分享码不一致', 'Saved build URL does not match its share code');
+    result.id = parsed.id; result.sourceUrl = parsed.url;
+  }
+  if (value.dataVersion != null) result.dataVersion = settingsText(value.dataVersion, 80, 'dataVersion');
+  result.classId = value.classId == null ? null : number(value.classId, 0, 4, 'classId', true);
+  if (value.masteryId != null) result.masteryId = number(value.masteryId, 0, 3, 'masteryId', true);
+  if (value.level != null) result.level = number(value.level, 1, 100, 'level', true);
+  return result;
+}
+function settingsAnalysis(draft, build) {
+  const analysis = draft.analysis ?? {};
+  if (!settingsRecord(analysis) || typeof analysis.hasUnresolvedTargets !== 'boolean' || !Array.isArray(analysis.warnings) || analysis.warnings.length > 256) fail('INVALID_FILTER_SETTINGS', '配装解析信息无效', 'Invalid saved build analysis');
+  const warnings = analysis.warnings.map(entry => {
+    if (!settingsRecord(entry)) fail('INVALID_FILTER_SETTINGS', '配装提示信息无效', 'Invalid saved build warning');
+    const message = typeof entry.message === 'string' ? settingsText(entry.message, 3000, 'warning.message') : {
+      zh: settingsText(entry.message?.zh, 3000, 'warning.message.zh'), en: settingsText(entry.message?.en, 3000, 'warning.message.en'),
+    };
+    return { code: settingsText(entry.code, 100, 'warning.code'), message, ...(entry.sourcePath === undefined ? {} : { sourcePath: settingsText(entry.sourcePath, 512, 'warning.sourcePath') }) };
+  });
+  const targets = Array.isArray(analysis.targets) ? analysis.targets : [];
+  const initial = analysis.initialSelections ?? {
+    unique: targets.filter(t => t.kind === 'unique').map(t => t.uniqueId),
+    set: targets.filter(t => t.kind === 'set').map(t => t.uniqueId),
+    high: targets.filter(t => !IDOL_TYPES.includes(t.baseTypeId)).flatMap(t => t.affixes ?? []).map(a => a.id).filter(id => isGearAffix(catalog.affixes[id])),
+  };
+  if (!settingsRecord(initial)) fail('INVALID_FILTER_SETTINGS', '原配装需求信息无效', 'Invalid original build selections');
+  const initialSelections = { unique: ids(initial.unique, catalog.uniques, 'initial.unique'), set: ids(initial.set, catalog.uniques, 'initial.set'), high: ids(initial.high, catalog.affixes, 'initial.high') };
+  if (initialSelections.unique.some(id => catalog.uniques[id].isSetItem) || initialSelections.set.some(id => !catalog.uniques[id].isSetItem) || initialSelections.high.some(id => !isGearAffix(catalog.affixes[id]))) fail('INVALID_FILTER_SETTINGS', '原配装需求分类无效', 'Invalid original selection categories');
+  return { hasUnresolvedTargets: analysis.hasUnresolvedTargets, warnings, build: { ...build }, initialSelections };
+}
+
+/** Only editor settings and compact source context are stored; no save or full planner data. */
+export function getValueFilterSettings(draft) {
+  const validated = validateDraft(draft), build = settingsBuild(draft.build);
+  escapeXml(draft.name);
+  const idols = draft.idols.map(row => {
+    const id = settingsText(row.id, 200, 'idol.id'), baseTypeId = number(row.baseTypeId, 25, 33, 'idol.baseTypeId', true);
+    const affixIds = ids(row.affixIds, catalog.affixes, 'idol.affixIds');
+    if (affixIds.some(affixId => !IDOL_TYPES.some(type => isValueIdolAffix(catalog.affixes[affixId], type)))) fail('INVALID_IDOL_FILTER', '保存的神像词缀无效', 'Invalid saved idol affix');
+    const subTypeId = row.subTypeId == null ? undefined : number(row.subTypeId, 0, 65535, 'idol.subTypeId', true);
+    if (subTypeId !== undefined && !Object.hasOwn(itemCatalog.bases[baseTypeId].subtypes, subTypeId)) fail('INVALID_IDOL_SUBTYPE', '神像底材无效', 'Invalid saved idol base');
+    return { id, baseTypeId, ...(subTypeId === undefined ? {} : { subTypeId }), affixIds, enabled: row.enabled };
+  });
+  return { gameVersion: itemCatalog.gameVersion, draft: {
+    schemaVersion: 3, name: draft.name, language: draft.language, build,
+    uniqueIds: validated.uniqueIds, setIds: validated.setIds, highAffixIds: validated.high, mediumAffixIds: validated.medium,
+    idols, groups: validated.styles, options: { rareUniqueThreshold: validated.options.rareUniqueThreshold, rareSetThreshold: validated.options.rareSetThreshold },
+    exclusions: validated.exclusions, analysis: settingsAnalysis(draft, build),
+  } };
+}
+
+export function restoreValueFilterDraft(xml) {
+  const saved = decodeFilterSettings(xml);
+  if (saved.draft.schemaVersion !== 3) fail('UNSUPPORTED_FILTER_SETTINGS', '此构造草稿版本暂不支持', 'This filter draft version is not supported');
+  if (!settingsRecord(saved.draft.groups) || VALUE_FILTER_GROUPS.some(group => !Object.hasOwn(saved.draft.groups, group.id)) || !settingsRecord(saved.draft.options) || !Object.hasOwn(saved.draft.options, 'rareUniqueThreshold') || !Object.hasOwn(saved.draft.options, 'rareSetThreshold')) fail('INVALID_FILTER_SETTINGS', '构造设置不完整', 'Saved filter settings are incomplete');
+  // Canonicalize through the same domain validation as export; do not merge arbitrary JSON fields.
+  const restored = getValueFilterSettings(saved.draft).draft;
+  if (saved.gameVersion !== itemCatalog.gameVersion) {
+    restored.analysis.hasUnresolvedTargets = true;
+    restored.analysis.warnings.push(warning('FILTER_CATALOG_CHANGED', '物品目录版本已变化，请核对设置；其他装备与神像继续显示。', 'Item catalog version changed. Review the settings; unmatched equipment and idols remain visible.'));
+    restored.groups.equipment_other.show = true; restored.groups.idol_other.show = true;
+  }
+  return restored;
 }

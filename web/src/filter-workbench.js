@@ -20,12 +20,13 @@ const idolAffix = isValueIdolAffix;
 function uiState(state) {
   const draft = state.filterDraft;
   if (!state.filterUi || state.filterUi.draft !== draft) {
+    const initial = draft.analysis?.initialSelections ?? { unique: [...draft.uniqueIds], set: [...draft.setIds], high: [...draft.highAffixIds] };
     state.filterUi = {
       draft, candidates: {
-        unique: [...draft.uniqueIds], set: [...draft.setIds], high: [...draft.highAffixIds],
+        unique: unique([...initial.unique, ...draft.uniqueIds]), set: unique([...initial.set, ...draft.setIds]), high: unique([...initial.high, ...draft.highAffixIds]),
         medium: unique([...commonGroups.flatMap(group => group.affixIds), ...draft.mediumAffixIds]),
       },
-      initial: { unique: [...draft.uniqueIds], set: [...draft.setIds], high: [...draft.highAffixIds] },
+      initial: { unique: [...initial.unique], set: [...initial.set], high: [...initial.high] },
       query: {}, pending: {}, open: {}, idolSequence: 0,
     };
   }
@@ -153,7 +154,7 @@ function groupView(state) {
     const status = text(language,`${visibleGroups.length} 组 · ${hidden} 组隐藏`,`${visibleGroups.length} groups · ${hidden} hidden`);
     return `<details class="panel filter-group-family" data-filter-family="${id}" ${open ? 'open' : ''}><summary><strong>${text(language,zh,en)}</strong><span>${status}</span></summary><div>${visibleGroups.map(groupCard).join('')}${id === 'equipment' ? `<p class="small-note filter-fallback-note">${draft.groups.equipment_other.show ? text(language,'未命中四类的装备继续显示，便于核对未解析目标。','Unmatched equipment remains visible for reviewing unresolved targets.') : text(language,'未命中四类的普通装备默认隐藏。','Unmatched ordinary equipment is hidden.')}</p>` : ''}</div></details>`;
   }).join('');
-  return `<div class="filter-intro"><h2>${text(language,'分组与导出','Groups & export')}</h2></div><div class="filter-group-list">${familyCards}</div><section class="panel filter-export"><div class="panel-head"><h2>${text(language,'命名与下载','Name & download')}</h2><span class="filter-count" id="filter-rule-count">${output ? output.rules.length : "—"} / 200</span></div><div class="panel-body"><label class="filter-field"><span>${text(language,'过滤器名称','Filter name')}</span><input class="text-input" id="filter-name" maxlength="100" value="${escape(draft.name)}"></label><p id="filter-export-error" class="error-inline" role="alert" ${error ? '' : 'hidden'}>${escape(error || '')}</p>${warnings.length ? `<details class="warning-box"><summary>${text(language,'生成说明与限制','Generation notes and limits')} (${warnings.length})</summary>${warnings.map(warning => `<p>${escape(warningText(warning,language))}</p>`).join('')}</details>` : ''}<div class="filter-download-row"><p class="small-note">${text(language,'下载后在游戏内导入。','Download and import in game.')}</p><button type="button" class="primary-button" id="filter-download" ${error ? 'disabled' : ''}>${text(language,'下载过滤器 XML','Download filter XML')}</button></div></div></section>`;
+  return `<div class="filter-intro"><h2>${text(language,'分组与导出','Groups & export')}</h2></div><div class="filter-group-list">${familyCards}</div><section class="panel filter-export"><div class="panel-head"><h2>${text(language,'命名与下载','Name & download')}</h2><span class="filter-count" id="filter-rule-count">${output ? output.rules.length : "—"} / 200</span></div><div class="panel-body"><label class="filter-field"><span>${text(language,'过滤器名称','Filter name')}</span><input class="text-input" id="filter-name" maxlength="100" value="${escape(draft.name)}"></label><p id="filter-export-error" class="error-inline" role="alert" ${error ? '' : 'hidden'}>${escape(error || '')}</p>${warnings.length ? `<details class="warning-box"><summary>${text(language,'生成说明与限制','Generation notes and limits')} (${warnings.length})</summary>${warnings.map(warning => `<p>${escape(warningText(warning,language))}</p>`).join('')}</details>` : ''}<div class="filter-download-row"><p class="small-note">${text(language,'XML 会保存本次设置，下次可导入继续编辑。请保留网页下载的原文件。','XML includes your editing settings. Import it later to continue editing; keep the original web download.')}</p><button type="button" class="primary-button" id="filter-download" ${error ? 'disabled' : ''}>${text(language,'下载过滤器 XML','Download filter XML')}</button></div></div></section>`;
 }
 export function renderFilterWorkbench(state) {
   const { filterDraft: draft, language } = state;
