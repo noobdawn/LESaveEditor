@@ -239,6 +239,10 @@ test('hidden-types page changes equipment families and exact class idols and pre
   const output=generateValueFilter(ui.state.filterDraft);
   const excluded=output.rules.find(rule=>rule.groupId==='excluded');
   assert.equal(excluded.type,'HIDE');
+  const idolHides=output.rules.filter(rule=>rule.groupId==='excluded'&&rule.id!=='excluded-types');
+  assert.equal(idolHides.length,1);assert.equal(idolHides[0].name.zh,'隐藏非本职业神像');
+  assert.ok(idolHides[0].conditions.every(condition=>condition.type!=='rarity'));
+  assert.match(ui.downloads[0][0],/<ClassCondition|i:type="ClassCondition"/);
   assert.ok(output.rules.filter(rule=>/^(unique|set)_/.test(rule.groupId)).every(rule=>rule.order<excluded.order));
   assert.ok(output.rules.filter(rule=>/^equipment_/.test(rule.groupId)).every(rule=>rule.order>excluded.order));
   ui.click('[data-filter-step="4"]');ui.click('#filter-clear-exclusions');

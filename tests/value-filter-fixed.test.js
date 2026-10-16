@@ -105,12 +105,23 @@ test('other-class idol selection uses item class bits and preserves Mage and gen
   assert.ok(!keys.includes('25:0'), 'general idol');
   assert.ok(FILTER_IDOL_BASES.filter(b => keys.includes(b.key)).every(b => b.classRequirement && !(b.classRequirement & 2)));
   assert.deepEqual(getOtherClassIdolKeys(null), []);
-  const d = draft(); d.groups.idol_other.show = true; d.exclusions.idolBaseKeys = keys;
+  const d = draft(); d.build.classId = 1; d.groups.idol_other.show = true; d.exclusions.idolBaseKeys = keys;
   for (const subTypeId of [4, 9, 14]) assert.equal(evaluateValueItem(d, { baseTypeId: 30, subTypeId, rarity: 'RARE' }).outcome, 'HIDE');
   for (const subTypeId of [1, 6, 11]) assert.equal(evaluateValueItem(d, { baseTypeId: 30, subTypeId, rarity: 'RARE' }).outcome, 'SHOW');
   const hides = generateValueFilter(d).rules.filter(r => r.groupId === 'excluded');
-  assert.equal(hides.length, 5, 'all selected class bases share one rule per idol shape');
-  for (const rule of hides) assert.equal(rule.conditions.find(c => c.type === 'subtype').baseTypeIds.length, 1);
+  assert.equal(hides.length, 1, 'all other-class idols share one native class rule');
+  assert.equal(hides[0].name.zh, '隐藏非本职业神像');
+  assert.deepEqual(hides[0].conditions.find(c => c.type === 'subtype').baseTypeIds, [25,26,27,28,29,30,31,32,33]);
+  assert.equal(hides[0].conditions.find(c => c.type === 'class').classRequirement, 29);
+  assert.equal(hides[0].conditions.some(c => c.type === 'rarity'), false);
+  for (const base of FILTER_IDOL_BASES) {
+    const result = evaluateValueItem(d, { baseTypeId: base.baseType, subTypeId: base.subType });
+    assert.equal(result.outcome, keys.includes(base.key) ? 'HIDE' : 'SHOW', base.key);
+  }
+  d.exclusions.idolBaseKeys = keys.filter(key => key !== '30:4');
+  assert.equal(evaluateValueItem(d, { baseTypeId: 30, subTypeId: 4 }).outcome, 'SHOW', 'partial class selection cannot become a broad class hide');
+  assert.equal(evaluateValueItem(d, { baseTypeId: 30, subTypeId: 9 }).outcome, 'HIDE');
+  d.exclusions.idolBaseKeys = keys;
   d.exclusions.idolTypeIds = [30];
   const output = generateValueFilter(d);
   assert.ok(!output.rules.some(r => r.id === 'excluded-idols-30'), 'whole-shape exclusion subsumes its selected bases');
@@ -143,4 +154,20 @@ test('empty pools cannot export wildcard affixes and invalid exclusions are reje
   assert.throws(() => generateValueFilter(d), { code: 'INVALID_FILTER_EXCLUSIONS' });
   d.exclusions.idolBaseKeys = []; d.exclusions.equipmentTypeIds = [41];
   assert.throws(() => generateValueFilter(d), { code: 'INVALID_FILTER_EXCLUSIONS' });
+});
+
+test('idol needs and fallbacks match items without equipment rarity and hide names state their purpose', () => {
+  const d = draft(); d.language = 'en';
+  d.idols = [{ id: 'general', baseTypeId: 25, subTypeId: 0, affixIds: [108, 114], enabled: true }];
+  const idol = affixes => ({ baseTypeId: 25, subTypeId: 0, affixes: affixes.map(id => ({ id, tier: 1 })) });
+  assert.equal(evaluateValueItem(d, idol([108, 114])).groupId, 'idol_double');
+  assert.equal(evaluateValueItem(d, idol([108])).groupId, 'idol_single');
+  assert.equal(evaluateValueItem(d, idol([])).groupId, 'idol_other');
+  d.exclusions.equipmentTypeIds = [12]; d.exclusions.idolTypeIds = [30]; d.exclusions.idolBaseKeys = ['25:0'];
+  const output = generateValueFilter(d);
+  assert.equal(evaluateValueItem(d, idol([108, 114])).outcome, 'HIDE');
+  for (const rule of output.rules.filter(rule => rule.groupId.startsWith('idol_') || rule.groupId === 'excluded' && rule.id !== 'excluded-types')) assert.ok(rule.conditions.every(condition => condition.type !== 'rarity'));
+  for (const expected of ['Hide selected equipment types', 'Hide selected idol types', 'Hide selected idol bases (Small Idol)']) assert.ok(output.rules.some(rule => rule.name.en === expected), expected);
+  assert.match(output.xml, /<nameOverride>Hide selected idol types<\/nameOverride>/);
+  assert.equal(evaluateValueItem(d, { baseTypeId: 30, subTypeId: 4 }).outcome, 'HIDE');
 });

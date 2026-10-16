@@ -65,6 +65,12 @@ function conditionMatches(condition, item) {
       const subtypes = children(child(condition, 'subTypes'), 'int').map(node => Number(node.text));
       return types.includes(item.equipmentType) && (types.length !== 1 || !subtypes.length || subtypes.includes(item.subtype));
     }
+    case 'ClassCondition': {
+      const bits = { Primalist: 1, Mage: 2, Sentinel: 4, Acolyte: 8, Rogue: 16, Any: 31, None: 0 };
+      const mask = text(condition, 'req').split(/\s+/).reduce((flags, name) => flags | bits[name], 0);
+      const required = item.classRequirement ?? 0;
+      return mask === 0 || required !== 0 && (mask & required) === required;
+    }
     case 'UniqueModifiersCondition':
       return ['UNIQUE', 'SET', 'LEGENDARY'].includes(item.rarity) && children(condition, 'Uniques').some(node => Number(text(node, 'UniqueId')) === item.uniqueId);
     case 'AffixCondition': {
@@ -213,7 +219,7 @@ test('native XML resolves uniques and sets before exclusions, then ordinary equi
     const match = filter.match({ equipmentType: 'ONE_HANDED_MACES', uniqueId: 79, rarity });
     assert.equal(match.name, 'Valuable set items'); assert.equal(match.action, 'SHOW');
   }
-  for (const item of ordinary) { assert.equal(filter.match(item).name, 'Hide selected types'); assert.equal(filter.match(item).action, 'HIDE'); }
+  for (const item of ordinary) { assert.equal(filter.match(item).name, 'Hide selected equipment types'); assert.equal(filter.match(item).action, 'HIDE'); }
   for (const rarity of ['UNIQUE', 'SET', 'LEGENDARY']) assert.equal(filter.match({ equipmentType: 'RING', uniqueId: 65535, rarity }), undefined);
   input.groups.unique_needed.show = false;
   assert.equal(exportedFilter(input).match(selectedUnique).name, 'Needed uniques');
@@ -309,4 +315,27 @@ test('Exulis fixed-pool IDs remain legitimate corruption additions on another am
   assert.deepEqual(input.analysis.targets[0].inherentAffixes, []);
   const manual = draft(); manual.highAffixIds = [1084]; manual.mediumAffixIds = [22];
   assert.equal(exportedFilter(manual).match({ equipmentType: 'AMULET', rarity: 'RARE', affixes: [{ id: 1084, tier: 5 }, { id: 22, tier: 5 }] }).name, 'Crafting candidates');
+});
+
+test('exported idol XML uses type and class requirements without rarity and preserves general/current-class idols', () => {
+  const input = draft(); input.build.classId = 1; input.groups.idol_other.show = true;
+  input.exclusions.idolBaseKeys = Object.values(catalog.bases).filter(base => base.baseType >= 25 && base.baseType <= 33 && !base.hideInFilter && !base.legacy && base.classRequirement && !(base.classRequirement & 2)).map(base => `${base.baseType}:${base.subType}`);
+  const filter = exportedFilter(input);
+  const hides = filter.rules.filter(rule => text(rule, 'nameOverride') === 'Hide other-class idols');
+  assert.equal(hides.length, 1);
+  const conditions = children(child(hides[0], 'conditions'), 'Condition');
+  assert.deepEqual(conditions.map(condition => condition.attrs['i:type']), ['SubTypeCondition', 'ClassCondition']);
+  assert.equal(children(child(conditions[0], 'type'), 'EquipmentType').length, 9);
+  assert.equal(text(conditions[1], 'req'), 'Primalist Sentinel Acolyte Rogue');
+  for (const equipmentType of ['IDOL_1x1_ETERRA', 'IDOL_1x1_LAGON', 'IDOL_2x1', 'IDOL_1x2', 'IDOL_3x1', 'IDOL_1x3', 'IDOL_4x1', 'IDOL_1x4', 'IDOL_2x2']) {
+    for (const classRequirement of [0, 1, 2, 4, 8, 16, 3, 31]) {
+      const match = filter.match({ equipmentType, classRequirement });
+      assert.equal(match.action, classRequirement > 0 && (29 & classRequirement) === classRequirement ? 'HIDE' : 'SHOW');
+    }
+  }
+  input.idols = [{ id: 'general', baseTypeId: 25, subTypeId: 0, affixIds: [108, 114], enabled: true }];
+  const needs = exportedFilter(input);
+  assert.equal(needs.match({ equipmentType: 'IDOL_1x1_ETERRA', affixes: [{ id: 108, tier: 1 }, { id: 114, tier: 1 }] }).name, 'Two useful idol affixes');
+  assert.equal(needs.match({ equipmentType: 'IDOL_1x1_ETERRA', affixes: [{ id: 108, tier: 1 }] }).name, 'One useful idol affix');
+  for (const rule of needs.rules.filter(rule => /idol/i.test(text(rule, 'nameOverride')))) assert.ok(children(child(rule, 'conditions'), 'Condition').every(condition => condition.attrs['i:type'] !== 'RarityCondition'));
 });

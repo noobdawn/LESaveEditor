@@ -178,14 +178,29 @@ export function generateValueFilter(draft) {
   // Reforged sets can have LEGENDARY rarity, so identity (not just the rarity flag) separates sets.
   add('unique_common', 'remaining', [identities(Object.values(catalog.uniques).filter(u => !u.isSetItem).map(u => u.id))]);
   add('set_common', 'remaining', [identities(Object.values(catalog.uniques).filter(u => u.isSetItem).map(u => u.id))]);
-  const excludedTypes = sorted([...exclusions.equipmentTypeIds, ...exclusions.idolTypeIds]);
-  const hide = (key, conditions) => rules.push({ id: `excluded-${key}`, groupId: 'excluded', name: label('隐藏所选类型', 'Hide selected types'), type: 'HIDE', conditions: [rarity(ORDINARY_RARITIES), ...conditions], style: { color: 0, emphasized: false } });
-  if (excludedTypes.length) hide('types', [subtype(excludedTypes)]);
+  const hide = (key, name, conditions) => rules.push({ id: `excluded-${key}`, groupId: 'excluded', name, type: 'HIDE', conditions, style: { color: 0, emphasized: false } });
+  if (exclusions.equipmentTypeIds.length) hide('types', label('隐藏所选装备类型', 'Hide selected equipment types'), [rarity(ORDINARY_RARITIES), subtype(exclusions.equipmentTypeIds)]);
+  // Idols have no equipment rarity. Keep their scope separate from equipment exclusions.
+  if (exclusions.idolTypeIds.length) hide('idol-types', label('隐藏所选神像类型', 'Hide selected idol types'), [subtype(exclusions.idolTypeIds)]);
+  const selectedBases = new Set(exclusions.idolBaseKeys);
+  const activeBases = FILTER_IDOL_BASES.filter(base => !exclusions.idolTypeIds.includes(base.baseType));
+  const completeClasses = FILTER_CLASSES.filter(c => {
+    const bases = activeBases.filter(base => base.classRequirement & c.bit);
+    return bases.length > 0 && bases.every(base => selectedBases.has(base.key));
+  });
+  const classMask = completeClasses.reduce((mask, c) => mask | c.bit, 0);
+  if (classMask) {
+    const player = FILTER_CLASSES.find(c => c.id === draft.build.classId);
+    const otherClassMask = player ? 31 & ~player.bit : 0;
+    const name = classMask === otherClassMask ? label('隐藏非本职业神像', 'Hide other-class idols') : label('隐藏所选职业神像', 'Hide selected class idols');
+    // Native ClassCondition checks the item's class requirement, independently of its shape.
+    hide('idol-classes', name, [subtype(IDOL_TYPES), { type: 'class', classRequirement: classMask }]);
+  }
   for (const type of IDOL_TYPES) {
     if (exclusions.idolTypeIds.includes(type)) continue;
-    const subTypeIds = exclusions.idolBaseKeys.filter(key => Number(key.split(':')[0]) === type).map(key => Number(key.split(':')[1]));
-    // Native subTypes are respected only when exactly one EquipmentType is selected.
-    if (subTypeIds.length) hide(`idols-${type}`, [{ type: 'subtype', baseTypeIds: [type], subTypeIds }]);
+    const subTypeIds = activeBases.filter(base => base.baseType === type && selectedBases.has(base.key) && !(base.classRequirement && (base.classRequirement & classMask) === base.classRequirement)).map(base => base.subType);
+    // Partial base selections still require one item type so native subTypes remain effective.
+    if (subTypeIds.length) hide(`idols-${type}`, label(`隐藏所选神像底材（${catalog.types[type].name.zh}）`, `Hide selected idol bases (${catalog.types[type].name.en})`), [{ type: 'subtype', baseTypeIds: [type], subTypeIds: sorted(subTypeIds) }]);
   }
   add('equipment_core', 'fixed', [rarity(['EXALTED']), subtype(GEAR_TYPES), affix(high, 6)]);
   add('equipment_useful', 'fixed', [rarity(['EXALTED']), subtype(GEAR_TYPES), affix(useful, 6), affix(useful, 1, 3)]);
@@ -193,11 +208,11 @@ export function generateValueFilter(draft) {
   add('equipment_leveling', 'fixed', [...equipment, affix(high), affix(useful, 1, 3)]);
   add('equipment_other', 'remaining', equipment);
   for (const [baseTypeId, selected] of idolPools) {
-    const scope = [rarity(ORDINARY_RARITIES), subtype([baseTypeId])];
+    const scope = [subtype([baseTypeId])];
     add('idol_double', `shape${baseTypeId}`, [...scope, affix(selected.filter(id => catalog.affixes[id].type === 0)), affix(selected.filter(id => catalog.affixes[id].type === 1))]);
     add('idol_single', `shape${baseTypeId}`, [...scope, affix(selected)]);
   }
-  add('idol_other', 'remaining', [rarity(ORDINARY_RARITIES), subtype(IDOL_TYPES)]);
+  add('idol_other', 'remaining', [subtype(IDOL_TYPES)]);
   for (const kind of ['glyph', 'rune', 'shard', 'key']) add(kind, 'all', [{ type: 'resource', kind }]);
   add('altar', 'all', [subtype([41])]);
   rules.forEach((rule, index) => { rule.order = index; });
@@ -220,6 +235,7 @@ function conditionXml(c) {
   const wrap = (type, body) => `        <Condition i:type="${type}">${body}</Condition>`;
   if (c.type === 'unique') return wrap('UniqueModifiersCondition', c.uniqueIds.map(id => `<Uniques><UniqueId>${id}</UniqueId><Rolls /></Uniques>`).join(''));
   if (c.type === 'subtype') return wrap('SubTypeCondition', `<type>${c.baseTypeIds.map(id => `<EquipmentType>${EQUIPMENT_TYPES[id]}</EquipmentType>`).join('')}</type><subTypes>${c.subTypeIds?.map(id => `<int>${id}</int>`).join('') ?? ''}</subTypes>`);
+  if (c.type === 'class') return wrap('ClassCondition', `<req>${FILTER_CLASSES.filter(entry => c.classRequirement & entry.bit).map(entry => entry.enumName).join(' ')}</req>`);
   if (c.type === 'rarity') return wrap('RarityCondition', `<rarity>${c.rarities.join(' ')}</rarity>`);
   if (c.type === 'affix') return wrap('AffixCondition', `<affixes>${c.affixIds.map(id => `<int>${id}</int>`).join('')}</affixes><comparsion>${c.comparison ?? 'MORE_OR_EQUAL'}</comparsion><comparsionValue>${c.minTier}</comparsionValue><minOnTheSameItem>${c.minCount}</minOnTheSameItem><combinedComparsion>${c.combinedComparison ?? (c.minTotalTier ? 'MORE_OR_EQUAL' : 'ANY')}</combinedComparsion><combinedComparsionValue>${c.minTotalTier || 1}</combinedComparsionValue><advanced>true</advanced>`);
   if (c.type === 'potential') return wrap('PotentialCondition', ['MinLegendaryPotential', 'MaxLegendaryPotential', 'MinWeaversWill', 'MaxWeaversWill', 'MinWeaversTouch', 'MaxWeaversTouch', 'MinForgingPotential', 'MaxForgingPotential'].map(field => { const value = c[field[0].toLowerCase() + field.slice(1)]; return value == null ? `<${field} i:nil="true" />` : `<${field}>${value}</${field}>`; }).join(''));
@@ -247,6 +263,10 @@ export function matchValueFilterRule(rule, item) {
     if (c.type === 'unique') return ['UNIQUE', 'SET', 'LEGENDARY'].includes(item.rarity) && c.uniqueIds.includes(item.uniqueId);
     if (c.type === 'subtype') return c.baseTypeIds.includes(item.baseTypeId) && (c.baseTypeIds.length !== 1 || !c.subTypeIds?.length || c.subTypeIds.includes(item.subTypeId));
     if (c.type === 'rarity') return c.rarities.includes(item.rarity);
+    if (c.type === 'class') {
+      const required = item.classRequirement ?? catalog.bases[`${item.baseTypeId}:${item.subTypeId}`]?.classRequirement ?? 0;
+      return !c.classRequirement || !!required && (c.classRequirement & required) === required;
+    }
     if (c.type === 'affix') { const found = affixes.filter(a => c.affixIds.includes(a.affixId ?? a.id) && compare(a.tier, c.comparison ?? 'MORE_OR_EQUAL', c.minTier)); return found.length >= c.minCount && compare(found.reduce((sum, a) => sum + a.tier, 0), c.combinedComparison ?? (c.minTotalTier ? 'MORE_OR_EQUAL' : 'ANY'), c.minTotalTier); }
     if (c.type === 'potential') return Number.isFinite(item.legendaryPotential) && item.legendaryPotential >= c.minLegendaryPotential && item.legendaryPotential <= c.maxLegendaryPotential;
     if (c.type === 'resource') return (item.resourceKind ?? item.kind) === c.kind;
@@ -261,11 +281,11 @@ export function evaluateValueItem(draft, item) {
 
 // Planner class indices are 0..4; item ClassRequirement uses bits 1,2,4,8,16.
 export const FILTER_CLASSES = Object.freeze([
-  { id: 0, bit: 1, name: label('野蛮人', 'Primalist') },
-  { id: 1, bit: 2, name: label('法师', 'Mage') },
-  { id: 2, bit: 4, name: label('哨卫', 'Sentinel') },
-  { id: 3, bit: 8, name: label('侍祭', 'Acolyte') },
-  { id: 4, bit: 16, name: label('游侠', 'Rogue') },
+  { id: 0, bit: 1, enumName: 'Primalist', name: label('野蛮人', 'Primalist') },
+  { id: 1, bit: 2, enumName: 'Mage', name: label('法师', 'Mage') },
+  { id: 2, bit: 4, enumName: 'Sentinel', name: label('哨卫', 'Sentinel') },
+  { id: 3, bit: 8, enumName: 'Acolyte', name: label('侍祭', 'Acolyte') },
+  { id: 4, bit: 16, enumName: 'Rogue', name: label('游侠', 'Rogue') },
 ]);
 export const FILTER_EQUIPMENT_TYPES = Object.freeze(GEAR_TYPES.map(id => catalog.types[id]));
 export const FILTER_IDOL_TYPES = Object.freeze(IDOL_TYPES.map(id => catalog.types[id]));
