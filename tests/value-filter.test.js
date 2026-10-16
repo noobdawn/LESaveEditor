@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import LZString from 'lz-string';
 import catalog from '../web/src/data/filter-catalog.json' with { type: 'json' };
-import { createValueFilterDraft, generateValueFilter, evaluateValueItem, matchValueFilterRule, VALUE_FILTER_GROUPS, COMMON_AFFIX_GROUPS, isValueEquipmentAffix, isValueIdolAffix, createEquipmentScoreGroup, getEquipmentScoreThreshold, getEquipmentItemScore } from '../web/src/core/value-filter.js';
+import { createValueFilterDraft, generateValueFilter, evaluateValueItem, matchValueFilterRule, VALUE_FILTER_GROUPS, COMMON_AFFIX_GROUPS, isValueEquipmentAffix, isValueIdolAffix } from '../web/src/core/value-filter.js';
 
 const fixture = JSON.parse(readFileSync(new URL('./fixtures/planner-om6w3Ypq.json', import.meta.url), 'utf8'));
 const encoded = (prefix, text) => `${prefix}${LZString.compressToBase64(text).replace(/=+$/, '')}`;
@@ -14,7 +14,6 @@ const buildWith = (equipment, idols = []) => ({ ...structuredClone(fixture), dat
 function cleanDraft() {
   const d = createValueFilterDraft(buildWith({}));
   d.language = 'en'; d.uniqueIds = []; d.setIds = []; d.highAffixIds = []; d.mediumAffixIds = []; d.idols = [];
-  d.equipmentGroups = [];
   return d;
 }
 const gear = affixes => ({ baseTypeId: 2, subTypeId: 2, rarity: 'EXALTED', affixes: affixes.map(([id, tier]) => ({ affixId: id, tier })) });
@@ -60,7 +59,6 @@ test('unknown affixes preserve known unique identity and sibling affixes, disabl
   assert.deepEqual(d.uniqueIds, [66]); assert.deepEqual(d.highAffixIds, [26]);
   assert.equal(d.analysis.hasUnresolvedTargets, true);
   assert.equal(d.groups.equipment_other.show, true); assert.equal(d.groups.idol_other.show, true);
-  d.equipmentGroups = [];
   assert.doesNotThrow(() => generateValueFilter(d));
   d.groups.equipment_other.show = false;
   assert.throws(() => generateValueFilter(d), { code: 'UNRESOLVED_HIDE_TARGETS' });
@@ -76,7 +74,7 @@ test('Q9JP5wbn fixed glove variants retain their source tiers without becoming p
   assert.ok(draft.uniqueIds.includes(479));
   assert.ok(!draft.highAffixIds.includes(1145) && !draft.highAffixIds.includes(1147));
   assert.ok([503, 17, 80, 1027].every(id => draft.highAffixIds.includes(id)));
-  draft.equipmentGroups = [];
+
   assert.doesNotThrow(() => generateValueFilter(draft));
   assert.equal(JSON.stringify(source), before);
   const wrongUnique = structuredClone(source);
@@ -85,82 +83,6 @@ test('Q9JP5wbn fixed glove variants retain their source tiers without becoming p
   const truePrimordial = structuredClone(source);
   truePrimordial.data.equipment.hands.primordialAffix = { id: af(501), tier: 4 };
   assert.ok(createValueFilterDraft(truePrimordial).analysis.warnings.some(w => w.code === 'UNRESOLVED_TARGET' && /T8/.test(w.message.en)));
-});
-
-test('custom percentage score groups sort by threshold, preserve ties and distinguish disabled from hidden', () => {
-  const d = cleanDraft(); d.highAffixIds = [26];
-  d.scoring = { high: [1, 2, 3, 4, 5, 6, 7], medium: Array(7).fill(0), low: Array(7).fill(0) };
-  const low = createEquipmentScoreGroup({ id: 'low', name: 'Starter', threshold: 10 }), high = createEquipmentScoreGroup({ id: 'high', name: 'Keep', threshold: 30 });
-  const tied = createEquipmentScoreGroup({ id: 'tied', name: 'Same threshold', threshold: 10 });
-  d.equipmentGroups = [low, high, tied];
-  assert.equal(result(d, gear([[26, 7]])), 'low');
-  high.threshold = 20; assert.equal(result(d, gear([[26, 7]])), 'high');
-  high.show = false; assert.equal(evaluateValueItem(d, gear([[26, 7]])).outcome, 'HIDE');
-  high.enabled = false; assert.equal(result(d, gear([[26, 7]])), 'low');
-  const generated = generateValueFilter(d);
-  assert.equal(generated.groups.find(g => g.id === 'high').ruleCount, 0);
-  assert.deepEqual(generated.groups.filter(g => ['low', 'high', 'tied'].includes(g.id)).map(g => g.id), ['high', 'low', 'tied']);
-});
-
-test('other exalted protects T7 or double T6 when score groups are disabled', () => {
-  const d = cleanDraft(); d.equipmentGroups.forEach(g => { g.enabled = false; });
-  assert.equal(result(d, gear([[26, 7]])), 'equipment_other_exalted');
-  assert.equal(result(d, gear([[26, 6], [73, 6]])), 'equipment_other_exalted');
-  assert.equal(result(d, gear([[26, 6]])), 'equipment_other');
-  assert.equal(result(d, { ...gear([[26, 7]]), rarity: 'RARE' }), 'equipment_other');
-});
-
-test('fixed equipment group names reach summaries, rules and escaped XML without changing filtering', () => {
-  const d = createValueFilterDraft(fixture); d.equipmentGroups = []; const before = generateValueFilter(d);
-  const names = { equipment_other_exalted: '精选 <T7> & "珍藏"', equipment_other: "保留 '备用' 装备" };
-  const escapedNames = { equipment_other_exalted: '精选 &lt;T7&gt; &amp; &quot;珍藏&quot;', equipment_other: '保留 &apos;备用&apos; 装备' };
-  for (const [id, name] of Object.entries(names)) d.groups[id].name = name;
-  const unchangedRules = rules => rules.map(({ name, ...rule }) => rule);
-  for (const language of ['zh', 'en']) {
-    d.language = language;
-    const output = generateValueFilter(d);
-    assert.deepEqual(unchangedRules(output.rules), unchangedRules(before.rules), 'renaming must preserve conditions, order, visibility and colors');
-    assert.deepEqual(output.groups.map(g => [g.id, g.ruleCount]), before.groups.map(g => [g.id, g.ruleCount]));
-    for (const [id, name] of Object.entries(names)) {
-      const rules = output.rules.filter(rule => rule.groupId === id);
-      assert.ok(rules.length > 0);
-      assert.ok(rules.every(rule => rule.name === name));
-      assert.equal(output.groups.find(group => group.id === id).name, name);
-      assert.equal(output.xml.split(`<nameOverride>${escapedNames[id]}</nameOverride>`).length - 1, rules.length);
-    }
-    assert.equal(output.xml.replace(/<nameOverride>[^]*?<\/nameOverride>/g, '<nameOverride />').includes('<T7>'), false);
-  }
-  assert.equal(d.groups.equipment_other.name, names.equipment_other);
-});
-
-test('fixed equipment groups retain bilingual defaults only when a name is undefined', () => {
-  const d = cleanDraft(), ids = ['equipment_other_exalted', 'equipment_other'];
-  for (const language of ['zh', 'en']) {
-    d.language = language;
-    const withoutOverrides = generateValueFilter(d);
-    for (const id of ids) {
-      const definition = VALUE_FILTER_GROUPS.find(group => group.id === id);
-      assert.deepEqual(withoutOverrides.groups.find(group => group.id === id).name, definition.name);
-      assert.ok(withoutOverrides.rules.filter(rule => rule.groupId === id).every(rule => rule.name === definition.name));
-      assert.ok(withoutOverrides.xml.includes(`<nameOverride>${definition.name[language]}</nameOverride>`));
-      d.groups[id].name = undefined;
-    }
-    assert.equal(generateValueFilter(d).xml, withoutOverrides.xml);
-  }
-});
-
-test('fixed equipment group names reject empty, oversized and invalid XML values', () => {
-  for (const id of ['equipment_other_exalted', 'equipment_other']) {
-    const d = cleanDraft();
-    for (const name of ['', ' \t\n ', 'x'.repeat(81), null, 42]) {
-      d.groups[id].name = name;
-      assert.throws(() => generateValueFilter(d), { code: 'INVALID_SCORE_GROUP_NAME' });
-    }
-    d.groups[id].name = 'Bad\u0001name';
-    assert.throws(() => generateValueFilter(d), { code: 'INVALID_XML_TEXT' });
-    d.groups[id].name = 'x'.repeat(80);
-    assert.equal(generateValueFilter(d).groups.find(group => group.id === id).name, d.groups[id].name);
-  }
 });
 
 test('same-shape idol pools allow recombination but require one selected prefix and suffix', () => {
@@ -209,20 +131,6 @@ test('valuable sets combine selected and rare identities; reforged legendary set
   assert.equal(result(d, { uniqueId: 79, rarity: 'LEGENDARY' }), 'set_valuable');
 });
 
-test('all logical styles apply to all variants; fallback hiding excludes altars and non-equipment resources', () => {
-  const d = createValueFilterDraft(fixture); d.scoring = { high: [0, 1, 0, 1, 0, 1, 1], medium: Array(7).fill(0), low: Array(7).fill(0) }; Object.assign(d.equipmentGroups[2], { show: false, color: 17, emphasized: true });
-  const g = generateValueFilter(d), single = g.rules.filter(r => r.groupId === d.equipmentGroups[2].id);
-  assert.ok(single.length > 1 && single.every(r => r.type === 'HIDE' && r.style.color === 17 && r.style.emphasized));
-  assert.equal(evaluateValueItem(d, { baseTypeId: 41, rarity: 'RARE', affixes: [] }).outcome, 'SHOW');
-  for (const kind of ['glyph', 'rune', 'shard', 'key']) {
-    assert.equal(result(d, { resourceKind: kind }), kind);
-    d.groups[kind].show = false;
-    assert.equal(evaluateValueItem(d, { resourceKind: kind }).outcome, 'HIDE');
-  }
-  assert.deepEqual(evaluateValueItem(d, { kind: 'gold' }), { groupId: null, outcome: 'SHOW', rule: null });
-  assert.equal(g.groups.length, VALUE_FILTER_GROUPS.length + d.equipmentGroups.length);
-});
-
 test('empty pools never emit broad affix rules; invalid selections and XML text fail safely', () => {
   const d = cleanDraft(); let g = generateValueFilter(d);
   assert.ok(g.rules.every(r => r.conditions.every(c => c.type !== 'affix' || c.affixIds.length)));
@@ -237,23 +145,20 @@ test('empty pools never emit broad affix rules; invalid selections and XML text 
   d.groups.altar.color = 18; assert.throws(() => generateValueFilter(d), { code: 'INVALID_FILTER_VALUE' });
 });
 
-test('custom group validation rejects unsafe drafts and conservatively compiles large group sets', () => {
-  const d = createValueFilterDraft(fixture), template = structuredClone(d.equipmentGroups[0]);
-  for (const threshold of [0, 101, 1.5, '', null, true]) {
-    d.equipmentGroups = [{ ...template, threshold }]; assert.throws(() => generateValueFilter(d), { code: 'INVALID_FILTER_VALUE' });
+
+test('fixed equipment styles apply to the single native rule and resources keep their own scope', () => {
+  const d = createValueFilterDraft(fixture);
+  Object.assign(d.groups.equipment_crafting, { show: false, color: 17, emphasized: true });
+  const generated = generateValueFilter(d), rules = generated.rules.filter(r => r.groupId === 'equipment_crafting');
+  assert.equal(rules.length, 1);
+  assert.equal(rules[0].type, 'HIDE');
+  assert.deepEqual(rules[0].style, { color: 17, emphasized: true });
+  assert.equal(evaluateValueItem(d, { baseTypeId: 41, rarity: 'RARE', affixes: [] }).outcome, 'SHOW');
+  for (const kind of ['glyph', 'rune', 'shard', 'key']) {
+    assert.equal(result(d, { resourceKind: kind }), kind);
+    d.groups[kind].show = false;
+    assert.equal(evaluateValueItem(d, { resourceKind: kind }).outcome, 'HIDE');
   }
-  for (const name of ['', ' '.repeat(5), 'x'.repeat(81)]) {
-    d.equipmentGroups = [{ ...template, name }]; assert.throws(() => generateValueFilter(d), { code: 'INVALID_SCORE_GROUP_NAME' });
-  }
-  d.equipmentGroups = [{ ...template, name: 'invalid\u0001' }]; assert.throws(() => generateValueFilter(d), { code: 'INVALID_XML_TEXT' });
-  d.equipmentGroups = [template, { ...template }]; assert.throws(() => generateValueFilter(d), { code: 'INVALID_SCORE_GROUP_ID' });
-  d.equipmentGroups = [{ ...template, id: 'unique_needed' }]; assert.throws(() => generateValueFilter(d), { code: 'INVALID_SCORE_GROUP_ID' });
-  d.equipmentGroups = [{ ...template, enabled: 'false' }]; assert.throws(() => generateValueFilter(d), { code: 'INVALID_SCORE_GROUP_OPTION' });
-  d.equipmentGroups = Array.from({ length: 30 }, (_, i) => createEquipmentScoreGroup({ id: `score${i}`, name: `Score ${i}`, threshold: i * 3 + 1 }));
-  const before = structuredClone(d), generated = generateValueFilter(d);
-  assert.ok(generated.rules.length <= 200);
-  assert.equal(generated.diagnostics.approximate, true);
-  assert.deepEqual(d, before, 'compilation must not truncate or rewrite user groups');
-  d.equipmentGroups.forEach(g => { g.enabled = false; });
-  assert.doesNotThrow(() => generateValueFilter(d), 'there is no arbitrary logical group count limit');
+  assert.deepEqual(evaluateValueItem(d, { kind: 'gold' }), { groupId: null, outcome: 'SHOW', rule: null });
+  assert.equal(generated.groups.length, VALUE_FILTER_GROUPS.length - 1);
 });

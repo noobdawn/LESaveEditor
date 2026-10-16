@@ -1,6 +1,6 @@
 import catalog from './data/filter-catalog.json' with { type: 'json' };
 import palette from './data/filter-palette.json' with { type: 'json' };
-import { generateValueFilter, VALUE_FILTER_GROUPS, COMMON_AFFIX_GROUPS, VALUE_FILTER_DEFAULT_SCORING, isValueEquipmentAffix, isValueIdolAffix, createEquipmentScoreGroup, getEquipmentScoreThreshold } from './core/value-filter.js';
+import { generateValueFilter, VALUE_FILTER_GROUPS, COMMON_AFFIX_GROUPS, isValueEquipmentAffix, isValueIdolAffix, FILTER_CLASSES, FILTER_EQUIPMENT_TYPES, FILTER_IDOL_TYPES, FILTER_IDOL_BASES, getOtherClassIdolKeys } from './core/value-filter.js';
 import './filter-workbench.css';
 
 const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
@@ -8,7 +8,7 @@ const local = (value, language) => typeof value === 'string' ? value : value?.[l
 const text = (language, zh, en) => language === 'en' ? en : zh;
 const unique = values => [...new Set(values.map(Number))];
 const fields = { unique: 'uniqueIds', set: 'setIds', high: 'highAffixIds', medium: 'mediumAffixIds' };
-const stages = [['需求暗金','Needed uniques'],['高价值词缀','High-value affixes'],['中价值词缀','Medium-value affixes'],['分组与导出','Groups & export']];
+const stages = [['需求暗金','Needed uniques'],['高价值词缀','High-value affixes'],['有效词缀','Useful affixes'],['隐藏类型','Hidden types'],['分组与导出','Groups & export']];
 const commonGroups = COMMON_AFFIX_GROUPS.groups || COMMON_AFFIX_GROUPS;
 const colorOf = id => (palette.colors || palette).find(color => color.id === Number(id))?.hex || '#FFFFFF';
 const collectionOf = pool => pool === 'unique' || pool === 'set' ? catalog.uniques : catalog.affixes;
@@ -17,16 +17,6 @@ const warningText = (warning, language) => local(warning.message || warning, lan
 const affixKind = (affix, language) => text(language, affix?.type === 0 ? '前缀' : '后缀', affix?.type === 0 ? 'Prefix' : 'Suffix');
 const equipmentAffix = isValueEquipmentAffix;
 const idolAffix = isValueIdolAffix;
-const scoreTiers = [7, 6, 5, 4, 3, 2, 1];
-const scoreCategories = [['high','高价值','High value'],['medium','有效','Useful'],['low','无效','Unwanted']];
-const scoreText = value => typeof value === 'number' && Number.isFinite(value) ? String(Number(value.toFixed(2))) : '';
-const scoreName = value => `${scoreText(value)}%`;
-function validScoring(scoring) { try { getEquipmentScoreThreshold(1,scoring); return true; } catch { return false; } }
-function thresholdTotal(threshold, scoring, language) {
-  try { const score = getEquipmentScoreThreshold(threshold,scoring), total = scoreText(score.effectiveScore ?? score.rawScore); return text(language,`${total} 分`,`${total} points`); }
-  catch { return '—'; }
-}
-
 function uiState(state) {
   const draft = state.filterDraft;
   if (!state.filterUi || state.filterUi.draft !== draft) {
@@ -36,7 +26,7 @@ function uiState(state) {
         medium: unique([...commonGroups.flatMap(group => group.affixIds), ...draft.mediumAffixIds]),
       },
       initial: { unique: [...draft.uniqueIds], set: [...draft.setIds], high: [...draft.highAffixIds] },
-      query: {}, pending: {}, open: {}, idolSequence: 0, equipmentSequence: 0,
+      query: {}, pending: {}, open: {}, idolSequence: 0,
     };
   }
   return state.filterUi;
@@ -114,58 +104,64 @@ function highView(state) {
 }
 function mediumView(state) {
   const { language } = state;
-  return `<div class="filter-intro"><h2>${text(language,'中价值词缀','Medium-value affixes')}</h2></div>${affixPool(state,'medium')}`;
+  return `<div class="filter-intro"><h2>${text(language,'有效词缀','Useful affixes')}</h2></div>${affixPool(state,'medium')}`;
 }
-function scoreExample(threshold, language, scoring) {
-  try { return text(language,'例：','e.g. ') + local(getEquipmentScoreThreshold(threshold,scoring).example, language); }
-  catch { return text(language,'请检查评分与门槛','Check scores and threshold'); }
+
+const equipmentFamilies = [
+  ['onehand', '单手武器', 'One-handed weapons', [5,6,7,8,9,10,11]],
+  ['twohand', '双手近战武器', 'Two-handed melee weapons', [12,13,14,15,16]],
+  ['ranged', '弓与弩', 'Bows & crossbows', [23,24]],
+  ['offhand', '副手装备', 'Off-hand equipment', [17,18,19]],
+  ['armor', '护甲', 'Armor', [0,1,2,3,4]],
+  ['accessories', '饰品与遗物', 'Accessories & relics', [20,21,22]],
+];
+function exclusionsView(state) {
+  const { language, filterDraft: draft } = state, selected = draft.exclusions, ui = uiState(state);
+  const typeChoice = (type, field) => `<label class="filter-type-choice"><input type="checkbox" data-filter-exclude="${field}" data-type-id="${type.id}" ${selected[field].includes(type.id) ? 'checked' : ''}><span>${escape(local(type.name,language))}</span></label>`;
+  const bulk = (key, zh, en) => `<button type="button" class="text-button" data-filter-exclude-family="${key}">${text(language,zh,en)}</button>`;
+  const equipment = equipmentFamilies.map(([key,zh,en,ids]) => `<section class="panel"><div class="panel-head"><h2>${text(language,zh,en)}</h2>${bulk(key,'隐藏此类','Hide this family')}</div><div class="panel-body filter-type-grid">${FILTER_EQUIPMENT_TYPES.filter(type => ids.includes(type.id)).map(type => typeChoice(type,'equipmentTypeIds')).join('')}</div></section>`).join('');
+  const classes = [{ id: 'general', bit: 0, name: { zh: '通用神像', en: 'General idols' } }, ...FILTER_CLASSES];
+  const classCards = classes.map(c => {
+    const bases = FILTER_IDOL_BASES.filter(base => c.bit ? !!(base.classRequirement & c.bit) : !base.classRequirement);
+    const count = bases.filter(base => selected.idolBaseKeys.includes(base.key)).length;
+    return `<details class="panel filter-idol-exclusions" data-filter-exclusion-panel="${c.id}" ${ui.exclusionOpen?.[c.id] ? 'open' : ''}><summary><label><input type="checkbox" data-filter-exclude-class="${c.id}" ${count === bases.length ? 'checked' : ''}><strong>${escape(local(c.name,language))}</strong></label><span class="filter-count">${count} / ${bases.length}</span></summary><div class="panel-body filter-type-grid">${bases.map(base => `<label class="filter-type-choice"><input type="checkbox" data-filter-exclude-base="${base.key}" ${selected.idolBaseKeys.includes(base.key) ? 'checked' : ''}><span>${escape(local(base.name,language))}</span></label>`).join('')}</div></details>`;
+  }).join('');
+  const player = FILTER_CLASSES.find(c => c.id === draft.build.classId);
+  return `<div class="filter-intro"><h2>${text(language,'隐藏不需要的类型','Hide unwanted types')}</h2><p>${text(language,'勾选即优先隐藏，包含该类型的暗金、套装和配装需求。未勾选的类型继续按后续规则筛选。','Checked types are hidden first, including uniques, sets and build targets. Other types continue through the remaining rules.')}</p></div><div class="filter-pool-toolbar"><p class="small-note">${text(language,`已选 ${selected.equipmentTypeIds.length} 种装备、${selected.idolTypeIds.length} 种神像形状、${selected.idolBaseKeys.length} 种神像底材`,`${selected.equipmentTypeIds.length} equipment types, ${selected.idolTypeIds.length} idol shapes and ${selected.idolBaseKeys.length} idol bases selected`)}</p><button type="button" class="text-button" id="filter-clear-exclusions">${text(language,'取消全部隐藏','Clear hidden types')}</button></div><h3 class="filter-section-title">${text(language,'装备类型','Equipment types')}</h3><div class="filter-pool-grid">${equipment}</div><div class="filter-pool-toolbar"><h3 class="filter-section-title">${text(language,'按职业选择神像','Idols by class')}</h3>${player ? `<button type="button" class="outline-button" id="filter-hide-other-class-idols">${text(language,`隐藏其他职业神像（当前：${local(player.name,language)}）`,`Hide other-class idols (current: ${local(player.name,language)})`)}</button>` : ''}</div><div class="filter-pool-grid">${classCards}</div><section class="panel filter-idol-section"><div class="panel-head"><h2>${text(language,'按形状隐藏全部神像','Hide all idols of a shape')}</h2></div><div class="panel-body filter-type-grid">${FILTER_IDOL_TYPES.map(type => typeChoice(type,'idolTypeIds')).join('')}</div></section>`;
 }
-function scoringEditor(state, error) {
-  const { language, filterDraft: draft } = state, ui = uiState(state);
-  return `<details class="filter-score-details" data-filter-scoring ${(ui.scoringOpen ?? true) ? 'open' : ''}><summary>${text(language,'词缀评分','Affix scores')}</summary><div class="filter-score-toolbar"><span>${text(language,'100% = 4 条高价值 T7；T8 按 T7 计分','100% = 4 high-value T7 affixes; T8 uses T7 scores')}</span><button type="button" class="text-button" id="filter-reset-scoring">${text(language,'恢复默认','Reset defaults')}</button></div><div class="filter-score-table-wrap"><table class="filter-score-table"><thead><tr><th scope="col">${text(language,'词缀','Affix')}</th>${scoreTiers.map(tier => `<th scope="col">T${tier}</th>`).join('')}</tr></thead><tbody>${scoreCategories.map(([category,zh,en]) => `<tr><th scope="row">${text(language,zh,en)}</th>${scoreTiers.map(tier => `<td><input class="text-input" type="number" step="0.01" inputmode="decimal" data-filter-score-category="${category}" data-filter-score-tier="${tier}" value="${escape(draft.scoring?.[category]?.[tier-1] ?? '')}" aria-label="${text(language,zh,en)} T${tier}"></td>`).join('')}</tr>`).join('')}</tbody></table></div><p id="filter-scoring-error" class="error-inline" role="alert" ${error ? '' : 'hidden'}>${escape(error || '')}</p></details>`;
-}
+
 function groupView(state) {
   const { language, filterDraft: draft } = state, ui = uiState(state);
   let output, error;
   try { output = generateValueFilter({ ...draft, language }); } catch (problem) { error = problem.message; }
   const generated = new Map((output?.groups || []).map(group => [group.id,group]));
-  const warnings = [...new Map((output?.warnings || draft.analysis?.warnings || []).filter(warning => warning.code !== 'EQUIPMENT_SCORE_APPROXIMATION').map(warning => [warningText(warning,language), warning])).values()];
+  const warnings = [...new Map((output?.warnings || draft.analysis?.warnings || []).map(warning => [warningText(warning,language), warning])).values()];
   const colors = palette.colors || palette;
   const families = [
     ['equipment','装备','Equipment'], ['idol','神像','Idols'], ['unique','暗金','Uniques'],
     ['set','套装','Set items'], ['resources','锻造材料与钥匙','Crafting materials & keys'], ['altar','神像祭坛','Idol altars'],
   ];
-  const scoreGroups = [...draft.equipmentGroups].sort((a,b) => b.threshold - a.threshold);
-  const groupCard = (group, dynamic = false) => {
-    const style = dynamic ? group : draft.groups[group.id], summary = generated.get(group.id), title = dynamic ? group.name : style.name ?? local(group.name,language);
-    const id = escape(group.id);
-    const scoreValid = dynamic && validScoring(draft.scoring) && Number.isInteger(group.threshold) && group.threshold >= 1 && group.threshold <= 100;
-    const nameField = `<label class="filter-field filter-score-name"><span>${text(language,'组名','Group name')}</span><input class="text-input" type="text" maxlength="80" placeholder="${text(language,'例如：过渡装备','e.g. Transition equipment')}" data-filter-equipment-name="${id}" value="${escape(title)}"></label>`;
-    const heading = dynamic ? `<div class="filter-score-heading"><label class="filter-emphasis"><input type="checkbox" data-filter-equipment-enabled="${id}" ${group.enabled ? 'checked' : ''}>${text(language,'启用','Enabled')}</label><button type="button" class="text-button" data-filter-equipment-delete="${id}">${text(language,'删除','Delete')}</button></div>${nameField}<div class="filter-score-field"><label class="filter-threshold-heading" for="filter-score-number-${id}"><span>${text(language,'门槛','Threshold')}</span><span class="filter-threshold-entry"><input id="filter-score-number-${id}" class="text-input" type="number" min="1" max="100" step="1" inputmode="numeric" value="${escape(scoreText(group.threshold))}" data-filter-equipment-score="${id}" aria-describedby="filter-score-example-${id}"><span>% ·</span><output data-filter-score-value="${id}">${thresholdTotal(group.threshold,draft.scoring,language)}</output></span></label><input id="filter-score-slider-${id}" class="filter-score-slider" type="range" min="1" max="100" step="1" value="${escape(scoreText(group.threshold))}" data-filter-equipment-threshold="${id}" aria-label="${text(language,'门槛','Threshold')}" aria-valuetext="${escape(scoreName(group.threshold,language))}" aria-describedby="filter-score-example-${id}" ${scoreValid ? '' : 'disabled'}></div><p class="filter-score-example" id="filter-score-example-${id}">${escape(scoreExample(group.threshold,language,draft.scoring))}</p>` : `${group.id.startsWith('equipment_') ? nameField : `<div class="filter-group-title"><h3>${escape(title)}</h3></div>`}<p>${escape(local(summary?.description || group.description,language))}</p>`;
-    const count = dynamic && !group.enabled ? text(language,'已停用','Disabled') : summary ? text(language,`${summary.ruleCount} 条自动规则`,`${summary.ruleCount} automatic rules`) : text(language,'完成选择后生成','Generated when selections are valid');
-    const previewStatus = dynamic && !group.enabled ? text(language,'已停用','Disabled') : !style.show ? text(language,'隐藏','Hidden') : '';
-    return `<section class="filter-group-card ${style.show ? '' : 'is-hidden'} ${dynamic && !group.enabled ? 'is-disabled' : ''}" ${dynamic ? `data-filter-equipment-card="${id}"` : ''}><div class="filter-group-copy">${heading}<span class="filter-count" data-filter-group-rule-count="${id}">${count}</span></div><div class="filter-group-controls"><label class="filter-field"><span>${text(language,'显示方式','Visibility')}</span><select class="text-input" data-filter-group-show="${id}"><option value="show" ${style.show ? 'selected' : ''}>${text(language,'显示','Show')}</option><option value="hide" ${style.show ? '' : 'selected'}>${text(language,'隐藏','Hide')}</option></select></label><label class="filter-field"><span>${text(language,'颜色','Color')}</span><span class="filter-color-control"><span class="filter-color-swatch" aria-hidden="true" style="--loot-color:${colorOf(style.color)}" data-filter-group-swatch="${id}"></span><select class="text-input" data-filter-group-color="${id}">${colors.map(color => `<option value="${color.id}" ${color.id === Number(style.color) ? 'selected' : ''}>${escape(local(color.name,language))}</option>`).join('')}</select></span></label><div class="filter-preview-field"><div class="filter-preview-heading"><span>${text(language,'颜色预览','Color preview')}</span><span class="filter-count" data-filter-group-preview-status="${id}">${previewStatus}</span></div><div class="filter-loot-preview ${style.emphasized ? 'emphasized' : ''}" style="--loot-color:${colorOf(style.color)}" data-filter-group-preview="${id}">${escape(title)}</div></div><label class="filter-emphasis"><input type="checkbox" data-filter-group-emphasis="${id}" ${style.emphasized ? 'checked' : ''}>${text(language,'强调','Emphasize')}</label></div></section>`;
+  const groupCard = group => {
+    const style = draft.groups[group.id], summary = generated.get(group.id), title = local(group.name,language), id = escape(group.id);
+    return `<section class="filter-group-card ${style.show ? '' : 'is-hidden'}"><div class="filter-group-copy"><div class="filter-group-title"><h3>${escape(title)}</h3></div><p>${escape(local(group.description,language))}</p><span class="filter-count" data-filter-group-rule-count="${id}">${summary ? text(language,`${summary.ruleCount} 条规则`,`${summary.ruleCount} rules`) : '—'}</span></div><div class="filter-group-controls"><label class="filter-field"><span>${text(language,'显示方式','Visibility')}</span><select class="text-input" data-filter-group-show="${id}"><option value="show" ${style.show ? 'selected' : ''}>${text(language,'显示','Show')}</option><option value="hide" ${style.show ? '' : 'selected'}>${text(language,'隐藏','Hide')}</option></select></label><label class="filter-field"><span>${text(language,'颜色','Color')}</span><span class="filter-color-control"><span class="filter-color-swatch" aria-hidden="true" style="--loot-color:${colorOf(style.color)}" data-filter-group-swatch="${id}"></span><select class="text-input" data-filter-group-color="${id}">${colors.map(color => `<option value="${color.id}" ${color.id === Number(style.color) ? 'selected' : ''}>${escape(local(color.name,language))}</option>`).join('')}</select></span></label><div class="filter-preview-field"><div class="filter-preview-heading"><span>${text(language,'颜色预览','Color preview')}</span></div><div class="filter-loot-preview ${style.emphasized ? 'emphasized' : ''}" style="--loot-color:${colorOf(style.color)}" data-filter-group-preview="${id}">${escape(title)}</div></div><label class="filter-emphasis"><input type="checkbox" data-filter-group-emphasis="${id}" ${style.emphasized ? 'checked' : ''}>${text(language,'强调','Emphasize')}</label></div></section>`;
   };
   const familyCards = families.map(([id,zh,en]) => {
     const groups = VALUE_FILTER_GROUPS.filter(group => id === 'resources' ? ['glyph','rune','shard','key'].includes(group.id) : group.id === id || group.id.startsWith(`${id}_`));
-    const dynamic = id === 'equipment' ? scoreGroups : [];
-    const hidden = groups.filter(group => !draft.groups[group.id].show).length + dynamic.filter(group => group.enabled && !group.show).length;
-    const disabled = dynamic.filter(group => !group.enabled).length;
-    const count = groups.length + dynamic.length;
+    const visibleGroups = groups.filter(group => group.id !== 'equipment_other');
+    const hidden = visibleGroups.filter(group => !draft.groups[group.id].show).length;
     const open = ui.families?.[id] ?? id === 'equipment';
-    const toolbar = id === 'equipment' ? `<div class="filter-equipment-toolbar"><button type="button" class="outline-button" id="filter-add-equipment-group">${text(language,'＋ 添加装备组','＋ Add equipment group')}</button><span class="filter-count">${text(language,'高门槛优先','Higher thresholds first')}</span></div>${scoringEditor(state,error)}` : '';
-    const status = text(language,`${count} 组 · ${hidden} 组隐藏${disabled ? ` · ${disabled} 组停用` : ''}`,`${count} groups · ${hidden} hidden${disabled ? ` · ${disabled} disabled` : ''}`);
-    return `<details class="panel filter-group-family" data-filter-family="${id}" ${open ? 'open' : ''}><summary><strong>${text(language,zh,en)}</strong><span>${status}</span></summary><div>${toolbar}${dynamic.map(group => groupCard(group,true)).join('')}${groups.map(group => groupCard(group)).join('')}</div></details>`;
+    const status = text(language,`${visibleGroups.length} 组 · ${hidden} 组隐藏`,`${visibleGroups.length} groups · ${hidden} hidden`);
+    return `<details class="panel filter-group-family" data-filter-family="${id}" ${open ? 'open' : ''}><summary><strong>${text(language,zh,en)}</strong><span>${status}</span></summary><div>${visibleGroups.map(groupCard).join('')}${id === 'equipment' ? `<p class="small-note filter-fallback-note">${draft.groups.equipment_other.show ? text(language,'未命中四类的装备继续显示，便于核对未解析目标。','Unmatched equipment remains visible for reviewing unresolved targets.') : text(language,'未命中四类的普通装备默认隐藏。','Unmatched ordinary equipment is hidden.')}</p>` : ''}</div></details>`;
   }).join('');
-  return `<div class="filter-intro"><h2>${text(language,'分组与导出','Groups & export')}</h2></div><div class="filter-group-list">${familyCards}</div><section class="panel filter-export"><div class="panel-head"><h2>${text(language,'命名与下载','Name & download')}</h2><span class="filter-count" id="filter-rule-count">${output ? output.rules.length : "—"} / 200</span></div><div class="panel-body"><label class="filter-field"><span>${text(language,'过滤器名称','Filter name')}</span><input class="text-input" id="filter-name" maxlength="100" value="${escape(draft.name)}"></label><p id="filter-approximation" class="filter-approximation" ${output?.diagnostics?.approximate ? '' : 'hidden'}>${text(language,'近似过滤：可能多保留部分装备','Approximate filtering: may keep extra equipment')}</p><p id="filter-export-error" class="error-inline" role="alert" ${error ? '' : 'hidden'}>${escape(error || '')}</p>${warnings.length ? `<details class="warning-box"><summary>${text(language,'生成说明与限制','Generation notes and limits')} (${warnings.length})</summary>${warnings.map(warning => `<p>${escape(warningText(warning,language))}</p>`).join('')}</details>` : ''}<div class="filter-download-row"><p class="small-note">${text(language,'下载后在游戏内导入。','Download and import in game.')}</p><button type="button" class="primary-button" id="filter-download" ${error ? 'disabled' : ''}>${text(language,'下载过滤器 XML','Download filter XML')}</button></div></div></section>`;
+  return `<div class="filter-intro"><h2>${text(language,'分组与导出','Groups & export')}</h2></div><div class="filter-group-list">${familyCards}</div><section class="panel filter-export"><div class="panel-head"><h2>${text(language,'命名与下载','Name & download')}</h2><span class="filter-count" id="filter-rule-count">${output ? output.rules.length : "—"} / 200</span></div><div class="panel-body"><label class="filter-field"><span>${text(language,'过滤器名称','Filter name')}</span><input class="text-input" id="filter-name" maxlength="100" value="${escape(draft.name)}"></label><p id="filter-export-error" class="error-inline" role="alert" ${error ? '' : 'hidden'}>${escape(error || '')}</p>${warnings.length ? `<details class="warning-box"><summary>${text(language,'生成说明与限制','Generation notes and limits')} (${warnings.length})</summary>${warnings.map(warning => `<p>${escape(warningText(warning,language))}</p>`).join('')}</details>` : ''}<div class="filter-download-row"><p class="small-note">${text(language,'下载后在游戏内导入。','Download and import in game.')}</p><button type="button" class="primary-button" id="filter-download" ${error ? 'disabled' : ''}>${text(language,'下载过滤器 XML','Download filter XML')}</button></div></div></section>`;
 }
 export function renderFilterWorkbench(state) {
   const { filterDraft: draft, language } = state;
   if (!draft) return `<section class="filter-empty"><h2>${text(language,'从一个 Build 开始','Start with a build')}</h2><p>${text(language,'输入分享链接后即可确认价值池，无需读取存档。','Enter a build link to confirm value pools. No save file is needed.')}</p></section>`;
   uiState(state);
-  const step = Math.max(1, Math.min(4, Number(state.filterStep) || 1));
-  const views = [uniqueView, highView, mediumView, groupView];
-  return `<div class="filter-workbench"><nav class="filter-steps" aria-label="${text(language,'过滤器构造阶段','Filter creation stages')}">${stages.map((title,index) => `<button type="button" data-filter-step="${index+1}" class="${step === index+1 ? 'current' : ''}" ${step === index+1 ? 'aria-current="step"' : ''}><span>${index+1}</span><strong>${title[language === 'en' ? 1 : 0]}</strong></button>`).join('')}</nav>${views[step-1](state)}<div class="filter-stage-actions">${step > 1 ? `<button type="button" class="outline-button" data-filter-step="${step-1}">← ${text(language,'上一步','Back')}</button>` : '<span></span>'}${step < 4 ? `<button type="button" class="primary-button" data-filter-step="${step+1}">${text(language,'下一步','Next')} →</button>` : ''}</div></div>`;
+  const step = Math.max(1, Math.min(5, Number(state.filterStep) || 1));
+  const views = [uniqueView, highView, mediumView, exclusionsView, groupView];
+  return `<div class="filter-workbench"><nav class="filter-steps" aria-label="${text(language,'过滤器构造阶段','Filter creation stages')}">${stages.map((title,index) => `<button type="button" data-filter-step="${index+1}" class="${step === index+1 ? 'current' : ''}" ${step === index+1 ? 'aria-current="step"' : ''}><span>${index+1}</span><strong>${title[language === 'en' ? 1 : 0]}</strong></button>`).join('')}</nav>${views[step-1](state)}<div class="filter-stage-actions">${step > 1 ? `<button type="button" class="outline-button" data-filter-step="${step-1}">← ${text(language,'上一步','Back')}</button>` : '<span></span>'}${step < 5 ? `<button type="button" class="primary-button" data-filter-step="${step+1}">${text(language,'下一步','Next')} →</button>` : ''}</div></div>`;
 }
 
 export function bindFilterWorkbench(state, { render, notify, downloadFile }) {
@@ -173,22 +169,18 @@ export function bindFilterWorkbench(state, { render, notify, downloadFile }) {
   const draft = state.filterDraft, ui = uiState(state);
   const changed = () => { state.filterDirty = true; render(); };
   const refreshExportStatus = () => {
-    const button = document.querySelector('#filter-download'), error = document.querySelector('#filter-export-error'), scoringError = document.querySelector('#filter-scoring-error'), approximation = document.querySelector('#filter-approximation');
+    const button = document.querySelector('#filter-download'), error = document.querySelector('#filter-export-error');
     if (!button || !error) return;
     try {
       const output = generateValueFilter({ ...draft, language: state.language }); button.disabled = false; error.hidden = true; error.textContent = '';
-      if (approximation) approximation.hidden = !output.diagnostics?.approximate;
       document.querySelector('#filter-rule-count').textContent = `${output.rules.length} / 200`;
-      if (scoringError) { scoringError.hidden = true; scoringError.textContent = ''; }
       for (const group of output.groups) {
         const count = document.querySelector(`[data-filter-group-rule-count="${group.id}"]`);
         if (count) count.textContent = group.enabled === false ? text(state.language,'已停用','Disabled') : text(state.language,`${group.ruleCount} 条自动规则`,`${group.ruleCount} automatic rules`);
       }
     } catch (problem) {
       button.disabled = true; error.hidden = false; error.textContent = problem.message;
-      if (approximation) approximation.hidden = true;
       document.querySelector('#filter-rule-count').textContent = '— / 200';
-      if (scoringError) { scoringError.hidden = false; scoringError.textContent = problem.message; }
       document.querySelectorAll('[data-filter-group-rule-count]').forEach(count => { count.textContent = '—'; });
     }
   };
@@ -256,63 +248,38 @@ export function bindFilterWorkbench(state, { render, notify, downloadFile }) {
     const idol = idolById(button.dataset.filterIdolAffixRemove);
     idol.affixIds = idol.affixIds.filter(id => id !== Number(button.dataset.affixId)); changed();
   });
-  const equipmentGroup = id => draft.equipmentGroups.find(group => group.id === id);
-  const groupStyle = id => equipmentGroup(id) || draft.groups[id];
-  document.querySelector('#filter-add-equipment-group')?.addEventListener('click', () => {
-    const name = ui.equipmentSequence++ === 0 ? text(state.language,'过渡装备','Transition equipment') : text(state.language,`装备组 ${draft.equipmentGroups.length+1}`,`Equipment group ${draft.equipmentGroups.length+1}`);
-    draft.equipmentGroups.push(createEquipmentScoreGroup({ name, threshold: 30 })); changed();
+
+  document.querySelectorAll('[data-filter-exclusion-panel]').forEach(panel => panel.addEventListener('toggle', () => { (ui.exclusionOpen ??= {})[panel.dataset.filterExclusionPanel] = panel.open; }));
+  document.querySelectorAll('[data-filter-exclude]').forEach(input => input.onchange = () => {
+    const field = input.dataset.filterExclude, id = Number(input.dataset.typeId);
+    draft.exclusions[field] = input.checked ? unique([...draft.exclusions[field], id]) : draft.exclusions[field].filter(value => value !== id); changed();
   });
-  document.querySelectorAll('[data-filter-equipment-delete]').forEach(button => button.onclick = () => { draft.equipmentGroups = draft.equipmentGroups.filter(group => group.id !== button.dataset.filterEquipmentDelete); changed(); });
-  document.querySelectorAll('[data-filter-equipment-enabled]').forEach(input => input.onchange = () => { equipmentGroup(input.dataset.filterEquipmentEnabled).enabled = input.checked; changed(); });
-  document.querySelectorAll('[data-filter-equipment-name]').forEach(input => {
-    input.oninput = input.onchange = () => {
-      const id = input.dataset.filterEquipmentName, group = groupStyle(id); group.name = input.value; state.filterDirty = true;
-      (ui.automaticScoreNames ??= {})[id] = false;
-      document.querySelector(`[data-filter-group-preview="${id}"]`).textContent = group.name;
-      refreshExportStatus();
-    };
+  document.querySelectorAll('[data-filter-exclude-family]').forEach(button => button.onclick = () => {
+    const family = equipmentFamilies.find(f => f[0] === button.dataset.filterExcludeFamily);
+    draft.exclusions.equipmentTypeIds = unique([...draft.exclusions.equipmentTypeIds, ...family[3]]); changed();
   });
-  const syncThresholdControls = (group, source) => {
-    const slider = document.querySelector(`[data-filter-equipment-threshold="${group.id}"]`), number = document.querySelector(`[data-filter-equipment-score="${group.id}"]`);
-    const valid = Number.isInteger(group.threshold) && group.threshold >= 1 && group.threshold <= 100;
-    slider.disabled = !validScoring(draft.scoring) || !valid;
-    if (source !== slider && valid) slider.value = String(group.threshold);
-    if (source !== number) number.value = scoreText(group.threshold);
-    slider.ariaValueText = valid ? `${scoreName(group.threshold)} · ${thresholdTotal(group.threshold,draft.scoring,state.language)}` : text(state.language,'门槛无效','Invalid threshold');
-    document.querySelector(`[data-filter-score-value="${group.id}"]`).textContent = thresholdTotal(group.threshold,draft.scoring,state.language);
-    document.querySelector(`#filter-score-example-${group.id}`).textContent = scoreExample(group.threshold,state.language,draft.scoring);
-  };
-  const updateThreshold = (input, id) => {
-    const group = equipmentGroup(id), value = input.value.trim() === '' ? '' : Number(input.value);
-    const automatic = (ui.automaticScoreNames ??= {})[id] ?? [scoreName(group.threshold,'zh'),scoreName(group.threshold,'en'),`${group.threshold}%`].includes(group.name);
-    ui.automaticScoreNames[id] = automatic;
-    if (automatic && typeof value === 'number' && Number.isFinite(value)) {
-      group.name = scoreName(value,state.language);
-      document.querySelector(`[data-filter-equipment-name="${id}"]`).value = group.name;
-      document.querySelector(`[data-filter-group-preview="${id}"]`).textContent = group.name;
-    }
-    group.threshold = value; state.filterDirty = true;
-    syncThresholdControls(group,input); refreshExportStatus();
-  };
-  document.querySelectorAll('[data-filter-equipment-threshold]').forEach(input => {
-    input.oninput = () => updateThreshold(input,input.dataset.filterEquipmentThreshold);
+  document.querySelectorAll('[data-filter-exclude-base]').forEach(input => input.onchange = () => {
+    const key = input.dataset.filterExcludeBase;
+    draft.exclusions.idolBaseKeys = input.checked ? [...new Set([...draft.exclusions.idolBaseKeys, key])] : draft.exclusions.idolBaseKeys.filter(value => value !== key); changed();
+  });
+  document.querySelectorAll('[data-filter-exclude-class]').forEach(input => {
+    const c = FILTER_CLASSES.find(c => String(c.id) === input.dataset.filterExcludeClass);
+    const keys = FILTER_IDOL_BASES.filter(base => c ? !!(base.classRequirement & c.bit) : !base.classRequirement).map(base => base.key);
+    const count = keys.filter(key => draft.exclusions.idolBaseKeys.includes(key)).length;
+    input.indeterminate = count > 0 && count < keys.length;
+    input.onclick = event => event.stopPropagation?.();
     input.onchange = () => {
-      const id = input.dataset.filterEquipmentThreshold; updateThreshold(input,id); changed();
-      document.querySelector(`[data-filter-equipment-threshold="${id}"]`)?.focus({ preventScroll: true });
+      draft.exclusions.idolBaseKeys = input.checked ? [...new Set([...draft.exclusions.idolBaseKeys, ...keys])] : draft.exclusions.idolBaseKeys.filter(key => !keys.includes(key)); changed();
     };
   });
-  document.querySelectorAll('[data-filter-equipment-score]').forEach(input => {
-    input.oninput = input.onchange = () => updateThreshold(input,input.dataset.filterEquipmentScore);
+  document.querySelector('#filter-hide-other-class-idols')?.addEventListener('click', () => {
+    draft.exclusions.idolBaseKeys = [...new Set([...draft.exclusions.idolBaseKeys, ...getOtherClassIdolKeys(draft.build.classId)])]; changed();
   });
-  document.querySelectorAll('[data-filter-score-category]').forEach(input => {
-    input.oninput = input.onchange = () => {
-      draft.scoring[input.dataset.filterScoreCategory][Number(input.dataset.filterScoreTier)-1] = input.value.trim() === '' ? '' : Number(input.value);
-      state.filterDirty = true;
-      draft.equipmentGroups.forEach(group => syncThresholdControls(group)); refreshExportStatus();
-    };
+  document.querySelector('#filter-clear-exclusions')?.addEventListener('click', () => {
+    draft.exclusions = { equipmentTypeIds: [], idolTypeIds: [], idolBaseKeys: [] }; changed();
   });
-  document.querySelector('#filter-reset-scoring')?.addEventListener('click', () => { draft.scoring = structuredClone(VALUE_FILTER_DEFAULT_SCORING); changed(); });
-  document.querySelector('[data-filter-scoring]')?.addEventListener('toggle', event => { ui.scoringOpen = event.target.open; });
+
+  const groupStyle = id => draft.groups[id];
   document.querySelectorAll('[data-filter-group-show]').forEach(input => input.onchange = () => { groupStyle(input.dataset.filterGroupShow).show = input.value === 'show'; changed(); });
   const refreshGroupPreview = id => {
     const style = groupStyle(id), preview = document.querySelector(`[data-filter-group-preview="${id}"]`);

@@ -17,12 +17,6 @@ function source(equipment = {}) {
 function draft() {
   const value = createValueFilterDraft(source());
   value.language = 'en'; value.highAffixIds = [501, 502, 25, 22]; value.mediumAffixIds = [1];
-  value.equipmentGroups = [
-    { id: 'score-top', name: 'Score 25', threshold: 25, enabled: true, show: true, color: 6, emphasized: true },
-    { id: 'score-middle', name: 'Score 10', threshold: 10, enabled: true, show: true, color: 4, emphasized: true },
-    { id: 'score-entry', name: 'Score 1', threshold: 1, enabled: true, show: true, color: 3, emphasized: false },
-  ];
-  value.scoring = { high: Array(7).fill(10), medium: Array(7).fill(4), low: Array(7).fill(0) };
   return value;
 }
 
@@ -69,7 +63,7 @@ function conditionMatches(condition, item) {
     case 'SubTypeCondition': {
       const types = children(child(condition, 'type'), 'EquipmentType').map(node => node.text);
       const subtypes = children(child(condition, 'subTypes'), 'int').map(node => Number(node.text));
-      return types.includes(item.equipmentType) && (!subtypes.length || subtypes.includes(item.subtype));
+      return types.includes(item.equipmentType) && (types.length !== 1 || !subtypes.length || subtypes.includes(item.subtype));
     }
     case 'UniqueModifiersCondition':
       return ['UNIQUE', 'SET', 'LEGENDARY'].includes(item.rarity) && children(condition, 'Uniques').some(node => Number(text(node, 'UniqueId')) === item.uniqueId);
@@ -141,247 +135,86 @@ function exportedFilter(input) {
 }
 const gear = (...affixes) => ({ equipmentType: 'HELMET', rarity: 'RARE', affixes: affixes.map(([id, tier]) => ({ id, tier })) });
 
-// Product scoring expressed directly; no preview matcher, threshold inversion,
-// compiled rules, or score helper from the implementation is used as an oracle.
+
+// Product requirements expressed independently of rule generation and preview.
 function expectedEquipment(input, item) {
-  const high = new Set(input.highAffixIds), medium = new Set(input.mediumAffixIds.filter(id => !high.has(id)));
+  const high = new Set(input.highAffixIds), useful = new Set([...high, ...input.mediumAffixIds]);
   const affixes = [...(item.affixes ?? []), item.sealedAffix, item.corruptedAffix, item.primordialAffix].filter(Boolean);
-  let scoreUnits = 0;
-  for (const affix of affixes) {
-    const category = high.has(affix.id) ? 'high' : medium.has(affix.id) ? 'medium' : 'low';
-    scoreUnits += Math.round(input.scoring[category][Math.min(affix.tier, 7) - 1] * 100);
-  }
-  const referenceUnits = 4 * Math.round(input.scoring.high[6] * 100);
-  const group = input.equipmentGroups.filter(group => group.enabled).toSorted((a, b) => b.threshold - a.threshold)
-    .find(group => scoreUnits >= Math.ceil(referenceUnits * group.threshold / 100 - 1e-10));
-  if (group) return { name: group.name, action: group.show ? 'SHOW' : 'HIDE', color: group.color, emphasized: group.emphasized };
-  const exalted = item.rarity === 'EXALTED' && (affixes.some(affix => affix.tier >= 7) || affixes.filter(affix => affix.tier >= 6).length >= 2);
-  const style = input.groups[exalted ? 'equipment_other_exalted' : 'equipment_other'];
-  return { name: exalted ? 'Other high-tier exalted equipment' : 'Other equipment', action: style.show ? 'SHOW' : 'HIDE', color: style.color, emphasized: style.emphasized };
+  let id = 'equipment_other';
+  if (item.rarity === 'EXALTED' && affixes.some(a => high.has(a.id) && a.tier >= 6)) id = 'equipment_core';
+  else if (item.rarity === 'EXALTED' && affixes.some(a => useful.has(a.id) && a.tier >= 6) && affixes.filter(a => useful.has(a.id)).length >= 3) id = 'equipment_useful';
+  else if (affixes.some(a => high.has(a.id) && a.tier >= 5) && affixes.filter(a => useful.has(a.id) && a.tier >= 5).length >= 2) id = 'equipment_crafting';
+  else if (affixes.some(a => high.has(a.id)) && affixes.filter(a => useful.has(a.id)).length >= 3) id = 'equipment_leveling';
+  const names = { equipment_core: 'Core-affix exalted equipment', equipment_useful: 'Useful-affix exalted equipment', equipment_crafting: 'Crafting candidates', equipment_leveling: 'Leveling equipment', equipment_other: 'Other equipment' };
+  const style = input.groups[id];
+  return { name: names[id], action: style.show ? 'SHOW' : 'HIDE', color: style.color, emphasized: style.emphasized };
 }
-function assertEquipmentMatches(input, filter, item, context = '') {
+function assertEquipmentMatches(input, filter, item) {
   const actual = filter.match(item), expected = expectedEquipment(input, item);
-  assert.ok(actual, `${context}: equipment has no terminal match`);
-  for (const key of ['name', 'action', 'color', 'emphasized']) assert.equal(actual[key], expected[key], `${context}: ${key}; ${JSON.stringify(item)}`);
+  assert.ok(actual, 'equipment must have a terminal match');
+  for (const key of ['name', 'action', 'color', 'emphasized']) assert.equal(actual[key], expected[key], JSON.stringify(item));
 }
 
-test('exact exported XML uses four high T7 affixes as 100 percent, and HIDE remains terminal', () => {
-  const input = draft(), filter = exportedFilter(input);
-  assert.equal(filter.match(gear([501, 1])).name, 'Score 25');
-  assert.equal(filter.match(gear([1, 8])).name, 'Score 10');
-  assert.equal(filter.match(gear([503, 8])).name, 'Other equipment');
-  Object.assign(input.equipmentGroups[1], { show: false, color: 17, emphasized: false });
-  let match = exportedFilter(input).match(gear([1, 4]));
-  assert.equal(match.name, 'Score 10'); assert.equal(match.action, 'HIDE');
-  assert.equal(text(match.rule, 'recolor'), 'false');
-  input.equipmentGroups[1].enabled = false;
-  match = exportedFilter(input).match(gear([1, 4]));
-  assert.equal(match.name, 'Score 1'); assert.equal(match.action, 'SHOW');
-  input.equipmentGroups = [];
-  assertEquipmentMatches(input, exportedFilter(input), gear([501, 7]), 'no enabled scoring groups');
-});
-
-test('equal percent thresholds preserve user order and a disabled group does not act as HIDE', () => {
-  const input = draft();
-  input.equipmentGroups = [
-    { ...input.equipmentGroups[2], id: 'lower', name: 'Lower', threshold: 1 },
-    { ...input.equipmentGroups[1], id: 'first', name: 'First', threshold: 10, show: false },
-    { ...input.equipmentGroups[1], id: 'second', name: 'Second', threshold: 10 },
-  ];
-  assert.equal(exportedFilter(input).match(gear([1, 7])).name, 'First');
-  assert.equal(exportedFilter(input).match(gear([1, 7])).action, 'HIDE');
-  input.equipmentGroups[1].enabled = false;
-  assert.equal(exportedFilter(input).match(gear([1, 7])).name, 'Second');
-});
-
-test('a third prefix and mixed T7/T8 counts use native strict MORE without overcounting two T8 affixes', () => {
-  const input = draft();
-  input.highAffixIds = [501, 502, 503, 504]; input.mediumAffixIds = [];
-  input.scoring = { high: [0, 0, 0, 0, 0, 0, 1], medium: Array(7).fill(0), low: Array(7).fill(0) };
-  input.equipmentGroups = [{ ...input.equipmentGroups[0], threshold: 75 }];
-  const filter = exportedFilter(input);
-  assert.equal(filter.match(gear([501, 8], [502, 8])).name, 'Other equipment');
-  for (const [a, b, c] of [[7, 7, 7], [8, 8, 7], [8, 8, 8]]) {
-    const item = { ...gear([501, a], [502, b]), sealedAffix: { id: 503, tier: c } };
-    assertEquipmentMatches(input, filter, item, 'three matching prefixes including an extra affix');
-  }
-  assert.match(filter.xml, /<combinedComparsion>MORE<\/combinedComparsion>/);
-  for (const rule of filter.rules) for (const condition of children(child(rule, 'conditions'), 'Condition')) {
-    if (condition.attrs['i:type'] !== 'AffixCondition') continue;
-    assert.ok(Number(text(condition, 'minOnTheSameItem')) >= 1);
-    assert.ok(Number(text(condition, 'combinedComparsionValue')) <= 28);
-    assert.ok(children(child(condition, 'affixes'), 'int').length > 0);
-  }
-});
-
-test('nonmonotonic editable tiers, negative contributions and zero branches agree with direct arithmetic', () => {
-  const input = draft(); input.highAffixIds = [501]; input.mediumAffixIds = [];
-  input.scoring = { high: [0, -1, 0, 2, 0, -1, 2], medium: Array(7).fill(0), low: Array(7).fill(0) };
-  input.equipmentGroups = [{ ...input.equipmentGroups[0], threshold: 25 }];
-  let filter = exportedFilter(input);
-  for (let tier = 1; tier <= 8; tier++) {
-    assertEquipmentMatches(input, filter, gear([501, tier]), `nonmonotonic T${tier}`);
-    assertEquipmentMatches(input, filter, { ...gear([1, 8]), primordialAffix: { id: 501, tier } });
-  }
-  assertEquipmentMatches(input, filter, gear(), 'empty zero-score item');
-  input.highAffixIds = [501, 502]; input.mediumAffixIds = [1];
-  input.scoring = { high: Array(7).fill(1), medium: Array(7).fill(-0.01), low: Array(7).fill(0) };
-  input.equipmentGroups = [
-    { ...input.equipmentGroups[0], threshold: 25 },
-    { ...draft().equipmentGroups[1], threshold: 24 },
-  ];
-  filter = exportedFilter(input);
-  const positive = gear([501, 7]);
-  assert.equal(filter.match(positive).name, 'Score 25');
-  assert.equal(filter.match({ ...positive, corruptedAffix: { id: 1, tier: 8 } }).name, 'Score 10');
-  for (const item of [gear(), gear([1, 1]), positive, { ...positive, sealedAffix: { id: 1, tier: 5 } }, gear([501, 1], [502, 1], [1, 8])]) {
-    assertEquipmentMatches(input, filter, item, 'negative points are never clamped or ignored');
-  }
-});
-
-test('sub-cent percentage cutoffs round toward the first reachable hundredth of a point', () => {
-  const input = draft(); input.highAffixIds = [501]; input.mediumAffixIds = [];
-  input.scoring = { high: Array(7).fill(0.01), medium: Array(7).fill(0), low: Array(7).fill(0) };
-  for (const threshold of [1, 25, 26, 100]) {
-    input.equipmentGroups = [{ ...input.equipmentGroups[0], threshold }];
-    const filter = exportedFilter(input);
-    for (const item of [gear(), gear([501, 1]), gear([501, 8])]) assertEquipmentMatches(input, filter, item, `${threshold}% of .04`);
-  }
-  input.scoring.high[6] = 0;
-  assert.throws(() => generateValueFilter(input), error => error.code === 'INVALID_SCORE_REFERENCE');
-});
-
-function equipmentSamples(count = 1800) {
-  let seed = 0x1e5c0de;
-  const random = max => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed % max; };
-  const prefixes = [501, 502, 503, 504, 70], suffixes = [25, 22, 1, 13, 17, 10];
-  return Array.from({ length: count }, () => {
-    const affixes = [], used = new Set();
-    for (const pool of [prefixes, suffixes]) {
-      const available = [...pool], quantity = random(3);
-      for (let n = 0; n < quantity; n++) {
-        const id = available.splice(random(available.length), 1)[0];
-        used.add(id); affixes.push({ id, tier: random(8) + 1 });
-      }
+test('exported native XML exactly implements all tier boundaries and useful-count combinations', () => {
+  const input = draft(), before = structuredClone(input), filter = exportedFilter(input);
+  const tiers = [0, 1, 4, 5, 6, 7, 8], ids = [501, 502, 1, 13];
+  for (const rarity of ['NORMAL', 'MAGIC', 'RARE', 'EXALTED']) {
+    for (const a of tiers) for (const b of tiers) for (const c of tiers) for (const d of [0, 1, 7]) {
+      const item = { ...gear(), rarity, affixes: [a, b, c, d].flatMap((tier, i) => tier ? [{ id: ids[i], tier }] : []) };
+      assertEquipmentMatches(input, filter, item);
     }
-    const item = { equipmentType: 'HELMET', rarity: 'EXALTED', affixes };
-    for (const field of ['sealedAffix', 'corruptedAffix', 'primordialAffix']) if (random(2)) {
-      const available = [...prefixes, ...suffixes].filter(id => !used.has(id));
-      const id = available[random(available.length)]; used.add(id);
-      item[field] = { id, tier: random(8) + 1 };
-    }
-    return item;
-  });
-}
-
-function scoreBoundarySamples(input) {
-  const high = new Set(input.highAffixIds), medium = new Set(input.mediumAffixIds);
-  const pools = { high: [], medium: [], low: [] };
-  for (const affix of Object.values(catalog.affixes)) if (affix.tierCount === 8 && affix.canRollOn.includes(0) && affix.specialAffixType !== 7) {
-    pools[high.has(affix.id) ? 'high' : medium.has(affix.id) ? 'medium' : 'low'].push(affix.id);
   }
-  const cases = [
-    [[4, 7], [0, 1], [0, 1]], [[4, 8], [0, 1], [1, 1]],
-    [[3, 7], [2, 7], [1, 7]], [[3, 7], [2, 7], [1, 6]],
-    [[2, 7], [2, 7], [0, 1]], [[2, 7], [2, 7], [1, 1]],
-    [[3, 6], [3, 5], [0, 1]], [[3, 6], [3, 5], [1, 1]],
-    [[3, 6], [3, 5], [1, 7]], [[0, 1], [7, 8], [0, 1]],
-    [[7, 6], [0, 1], [0, 1]], [[7, 8], [0, 1], [0, 1]],
-    [[0, 1], [0, 1], [0, 1]], [[0, 1], [0, 1], [1, 1]],
-  ];
-  return cases.map(specification => {
-    const affixes = ['high', 'medium', 'low'].flatMap((pool, index) => {
-      const [count, tier] = specification[index];
-      assert.ok(pools[pool].length >= count, `boundary fixture lacks ${pool} IDs`);
-      return pools[pool].slice(0, count).map(id => ({ id, tier }));
-    });
-    return { equipmentType: 'HELMET', rarity: 'EXALTED', affixes: affixes.slice(0, 4), sealedAffix: affixes[4], corruptedAffix: affixes[5], primordialAffix: affixes[6] };
-  });
-}
-
-test('exact XML matches independently scored items with all three additional affix sources', () => {
-  const input = draft(), filter = exportedFilter(input);
-  equipmentSamples().forEach((item, index) => assertEquipmentMatches(input, filter, item, `sample ${index}`));
-  assert.ok(filter.rules.length <= 200);
-  assert.notEqual(filter.generated.diagnostics.approximate, true);
-});
-
-test('the seventh affix can cross a score threshold and is not discarded or capped at four', () => {
-  const input = draft(); input.highAffixIds = [501, 502]; input.mediumAffixIds = [503, 504, 1, 13];
-  input.scoring = { high: Array(7).fill(1), medium: Array(7).fill(0.25), low: Array(7).fill(0) };
-  input.equipmentGroups = [{ ...input.equipmentGroups[0], threshold: 75 }];
-  const filter = exportedFilter(input);
-  const six = { ...gear([501, 1], [503, 1], [1, 1], [17, 1]), sealedAffix: { id: 502, tier: 1 }, corruptedAffix: { id: 13, tier: 1 } };
-  const seven = { ...six, primordialAffix: { id: 504, tier: 8 } };
-  assert.equal(filter.match(six).name, 'Other equipment');
-  assert.equal(filter.match(seven).name, 'Score 25');
-  assertEquipmentMatches(input, filter, six); assertEquipmentMatches(input, filter, seven);
-  assert.notEqual(filter.generated.diagnostics.approximate, true);
-});
-
-test('the actual Build can export a precise low-threshold configuration without changing its other pools', () => {
-  for (const id of ['om6w3Ypq', 'Q9JP5wbn']) {
-    const input = createValueFilterDraft(JSON.parse(readFileSync(new URL(`./fixtures/planner-${id}.json`, import.meta.url), 'utf8')));
-    input.language = 'en'; input.scoring.low = [0, 0, 0, 0, 0, 1, 2];
-    input.equipmentGroups = [{ ...draft().equipmentGroups[0], threshold: 1 }];
-    const filter = exportedFilter(input);
-    assert.ok(filter.rules.length <= 200);
-    equipmentSamples(600).forEach((item, index) => assertEquipmentMatches(input, filter, item, `${id} sample ${index}`));
-  }
-});
-
-test('default conservative export stays within 200 rules and never demotes a qualifying item', () => {
-  for (const id of ['om6w3Ypq', 'Q9JP5wbn']) {
-    const input = createValueFilterDraft(JSON.parse(readFileSync(new URL(`./fixtures/planner-${id}.json`, import.meta.url), 'utf8')));
-    input.language = 'en';
-    const before = structuredClone(input), filter = exportedFilter(input);
-    assert.deepEqual(input, before, 'export cannot rewrite the requested scoring table or groups');
-    assert.ok(filter.rules.length <= 200);
-    const names = input.equipmentGroups.filter(group => group.enabled).toSorted((a, b) => b.threshold - a.threshold).map(group => group.name);
-    const rank = name => names.includes(name) ? names.indexOf(name) : names.length;
-    for (const [index, item] of [...equipmentSamples(2000), ...scoreBoundarySamples(input)].entries()) {
-      const expected = expectedEquipment(input, item), actual = filter.match(item);
-      assert.ok(actual, `${id}/${index}: missing terminal match`);
-      assert.ok(rank(actual.name) <= rank(expected.name), `${id}/${index}: approximation demoted ${expected.name} to ${actual.name}`);
-      if (expected.action === 'SHOW') assert.equal(actual.action, 'SHOW', `${id}/${index}: approximation hid a wanted item`);
-      assert.ok(rank(expected.name) - rank(actual.name) <= filter.generated.diagnostics.errorBounds.maxGroupPromotion, 'reported promotion bound must cover the actual XML');
-      const promoted = input.equipmentGroups.find(group => group.name === actual.name);
-      if (promoted) {
-        const score = [...(item.affixes ?? []), item.sealedAffix, item.corruptedAffix, item.primordialAffix].filter(Boolean).reduce((total, affix) => {
-          const category = input.highAffixIds.includes(affix.id) ? 'high' : input.mediumAffixIds.includes(affix.id) ? 'medium' : 'low';
-          return total + Math.round(input.scoring[category][Math.min(affix.tier, 7) - 1] * 100);
-        }, 0) / 100;
-        const assignedMinimum = 4 * input.scoring.high[6] * promoted.threshold / 100;
-        assert.ok(assignedMinimum - score <= filter.generated.diagnostics.errorBounds.maxScoreOverstatement + 1e-9, 'reported score bound must cover the actual XML');
-      }
-    }
-    assert.equal(filter.generated.diagnostics.approximate, true);
-    assert.ok(filter.generated.warnings.some(warning => warning.code === 'EQUIPMENT_SCORE_APPROXIMATION'), 'the exported result must disclose its approximation');
-    assert.ok(Number.isFinite(filter.generated.diagnostics.errorBounds.maxGroupPromotion));
-    assert.ok(Number.isFinite(filter.generated.diagnostics.errorBounds.maxScoreOverstatement));
-    assert.deepEqual(filter.rules.map(rule => Number(text(rule, 'Order'))), Array.from({ length: filter.rules.length }, (_, index) => index));
-  }
-});
-
-test('a hidden score group cannot silently use conservative approximation that might hide wanted equipment', () => {
-  const input = createValueFilterDraft(fixture);
-  input.equipmentGroups[0].show = false;
-  const before = structuredClone(input);
-  assert.throws(() => generateValueFilter(input), error => error.code === 'APPROXIMATE_HIDDEN_SCORE_GROUP');
   assert.deepEqual(input, before);
+  assert.equal(filter.generated.diagnostics.equipmentRuleCount, 4);
+  assert.equal(filter.generated.diagnostics.approximate, false);
+  assert.ok(filter.rules.length < 40);
+  assert.deepEqual(filter.rules.map(rule => Number(text(rule, 'Order'))), Array.from({ length: filter.rules.length }, (_, index) => index));
 });
 
-test('other exalted gear still needs T7 or two T6 and remains below exact useful-score groups', () => {
+test('all ordinary equipment types share four rules and hidden categories remain terminal', () => {
+  const input = draft(); Object.assign(input.groups.equipment_core, { show: false, color: 17 });
+  const filter = exportedFilter(input);
+  const types = ['HELMET', 'BODY_ARMOR', 'BELT', 'BOOTS', 'GLOVES', 'ONE_HANDED_AXE', 'ONE_HANDED_DAGGER', 'ONE_HANDED_MACES', 'ONE_HANDED_SCEPTRE', 'ONE_HANDED_SWORD', 'WAND', 'ONE_HANDED_FIST', 'TWO_HANDED_AXE', 'TWO_HANDED_MACE', 'TWO_HANDED_SPEAR', 'TWO_HANDED_STAFF', 'TWO_HANDED_SWORD', 'QUIVER', 'SHIELD', 'CATALYST', 'AMULET', 'RING', 'RELIC', 'BOW', 'CROSSBOW'];
+  for (const equipmentType of types) {
+    const item = { ...gear([501, 6], [502, 5], [1, 1]), rarity: 'EXALTED', equipmentType };
+    assertEquipmentMatches(input, filter, item);
+  }
+});
+
+test('additional affix fields count as useful and unselected affixes never subtract value', () => {
   const input = draft(), filter = exportedFilter(input);
-  const exalted = (...affixes) => ({ ...gear(...affixes), rarity: 'EXALTED' });
-  assert.equal(filter.match(exalted([503, 7])).name, 'Other high-tier exalted equipment');
-  assert.equal(filter.match(exalted([503, 6], [13, 6])).name, 'Other high-tier exalted equipment');
-  assert.equal(filter.match(exalted([503, 6], [13, 5])).name, 'Other equipment');
-  assert.equal(filter.match(exalted([503, 6])).action, 'HIDE');
-  assert.equal(filter.match(exalted([501, 7])).name, 'Score 25');
+  for (const field of ['sealedAffix', 'corruptedAffix', 'primordialAffix']) {
+    const item = { ...gear([501, 4], [1, 1]), [field]: { id: 502, tier: 4 } };
+    assertEquipmentMatches(input, filter, item);
+    assert.equal(filter.match(item).name, 'Leveling equipment');
+    item.affixes.push({ id: 13, tier: 1 });
+    assert.equal(filter.match(item).name, 'Leveling equipment');
+  }
 });
 
+test('native XML exclusions hide only selected types and precise class idol bases before all keep rules', () => {
+  const input = draft(); input.uniqueIds = [277];
+  input.exclusions.equipmentTypeIds = [21, 12];
+  input.exclusions.idolBaseKeys = ['30:4', '30:9', '30:14'];
+  const filter = exportedFilter(input);
+  assert.equal(filter.match({ equipmentType: 'RING', uniqueId: 277, rarity: 'UNIQUE' }).action, 'HIDE');
+  for (const subtype of [4, 9, 14]) assert.equal(filter.match({ equipmentType: 'IDOL_1x3', subtype, rarity: 'RARE' }).action, 'HIDE');
+  input.groups.idol_other.show = true;
+  const visible = exportedFilter(input);
+  for (const subtype of [1, 6, 11]) assert.equal(visible.match({ equipmentType: 'IDOL_1x3', subtype, rarity: 'RARE' }).action, 'SHOW');
+  assert.equal(filter.match({ resource: 'rune' }).action, 'SHOW');
+  assert.equal(filter.match({ equipmentType: 'IDOL_ALTAR', rarity: 'RARE' }).action, 'SHOW');
+});
 
+test('effective-pool edits change matching without creating a low pool or changing the saved draft', () => {
+  const input = draft(), before = structuredClone(input), item = gear([501, 4], [502, 4], [1, 4]);
+  assert.equal(exportedFilter(input).match(item).name, 'Leveling equipment');
+  assert.deepEqual(input, before);
+  assert.equal(Object.hasOwn(input, 'lowAffixIds'), false);
+  input.mediumAffixIds = [];
+  assert.equal(exportedFilter(input).match(item).name, 'Other equipment');
+  assert.equal(exportedFilter(input).match(item).action, 'HIDE');
+});
 test('LP fields cannot accidentally highlight zero-LP uniques, sets or Weaver items', () => {
   const input = draft(); input.options.rareUniqueThreshold = 1;
   const filter = exportedFilter(input);
@@ -438,22 +271,11 @@ test('fixed unique variants never enter the high pool, regardless of which plann
     assert.deepEqual(input.highAffixIds, [70, 501]);
     assert.deepEqual(input.analysis.targets[0].inherentAffixes.map(affix => affix.id), [1136]);
     assert.equal(input.analysis.hasUnresolvedTargets, false);
-    input.equipmentGroups = [];
     assert.doesNotMatch(generateValueFilter(input).xml, /<int>1136<\/int>/);
   }
   const exulis = createValueFilterDraft(source({ amulet: { id: uniqueId(469, 8), affixes: [{ id: affixId(1083), tier: 1 }, { id: affixId(1084), tier: 1 }], corruptedAffix: { id: affixId(7), tier: 3 } } }));
   assert.deepEqual(exulis.highAffixIds, [7], 'Exulis fixed type-6 variants are not additional corruption targets');
   assert.deepEqual(exulis.analysis.targets[0].inherentAffixes.map(affix => affix.id), [1083, 1084]);
-});
-
-test('medium-value edits recompute the implicit low pool without mutating the saved draft', () => {
-  const input = draft(), before = structuredClone(input);
-  assert.equal(exportedFilter(input).match(gear([1, 5])).name, 'Score 10');
-  assert.deepEqual(input, before);
-  assert.equal(Object.hasOwn(input, 'lowAffixIds'), false);
-  input.mediumAffixIds = [];
-  assert.equal(exportedFilter(input).match(gear([1, 5])).name, 'Other equipment');
-  assert.equal(exportedFilter(input).match(gear([1, 5])).action, 'HIDE');
 });
 
 test('Exulis fixed-pool IDs remain legitimate corruption additions on another amulet', () => {
@@ -465,6 +287,6 @@ test('Exulis fixed-pool IDs remain legitimate corruption additions on another am
   assert.deepEqual(input.highAffixIds, [1083]);
   assert.equal(input.analysis.targets[0].affixes[0].origin, 'corruption');
   assert.deepEqual(input.analysis.targets[0].inherentAffixes, []);
-  const manual = draft(); manual.highAffixIds = [1084]; manual.mediumAffixIds = [];
-  assert.equal(exportedFilter(manual).match({ equipmentType: 'AMULET', rarity: 'RARE', affixes: [{ id: 1084, tier: 3 }] }).name, 'Score 25');
+  const manual = draft(); manual.highAffixIds = [1084]; manual.mediumAffixIds = [22];
+  assert.equal(exportedFilter(manual).match({ equipmentType: 'AMULET', rarity: 'RARE', affixes: [{ id: 1084, tier: 5 }, { id: 22, tier: 5 }] }).name, 'Crafting candidates');
 });

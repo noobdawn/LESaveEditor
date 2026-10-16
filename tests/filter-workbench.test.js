@@ -6,7 +6,7 @@ import catalog from '../web/src/data/filter-catalog.json' with { type: 'json' };
 import palette from '../web/src/data/filter-palette.json' with { type: 'json' };
 import * as filterCore from '../web/src/core/value-filter.js';
 
-const { createValueFilterDraft, generateValueFilter, createEquipmentScoreGroup, getEquipmentScoreThreshold, VALUE_FILTER_DEFAULT_SCORING, COMMON_AFFIX_GROUPS, VALUE_FILTER_GROUPS } = filterCore;
+const { createValueFilterDraft, generateValueFilter, COMMON_AFFIX_GROUPS, VALUE_FILTER_GROUPS } = filterCore;
 const build = JSON.parse(readFileSync(new URL('./fixtures/planner-om6w3Ypq.json', import.meta.url), 'utf8'));
 const plain = value => JSON.parse(JSON.stringify(value));
 const decode = value => String(value).replace(/&(?:amp|lt|gt|quot|#39);/g, token => ({'&amp;':'&','&lt;':'<','&gt;':'>','&quot;':'"','&#39;':"'"})[token]);
@@ -58,14 +58,8 @@ class DocumentStub {
   }
   querySelector(selector) { return this.querySelectorAll(selector)[0]??null; }
 }
-function workbench({step=1,language='zh',patch={},useDefaultScoring=false}={}) {
-  // Keep HIDE interaction cases exactly representable; real default approximation has its own test.
-  const scoring={high:Array(7).fill(10),medium:Array(7).fill(4),low:Array(7).fill(0)};
+function workbench({step=1,language='zh',patch={}}={}) {
   const draft=createValueFilterDraft(build);
-  if(!useDefaultScoring) {
-    draft.scoring=scoring;
-    draft.equipmentGroups=draft.equipmentGroups.map((group,index)=>({...group,threshold:[25,10,1][index],name:`${[25,10,1][index]}%`}));
-  }
   Object.assign(draft,patch);
   const state={tab:'filterTab',filterDraft:draft,filterStep:step,filterDirty:false,language,build};
   const document=new DocumentStub(), downloads=[], notices=[];
@@ -82,13 +76,13 @@ function workbench({step=1,language='zh',patch={},useDefaultScoring=false}={}) {
   return {state,document,render,control,click,check,inPool,search,downloads,notices};
 }
 
-test('four stages confirm merged Build targets instead of editing low-level rule purposes',()=>{
+test('five stages confirm merged Build targets instead of editing low-level rule purposes',()=>{
   const ui=workbench();
   assert.equal(ui.document.querySelectorAll('.current').length,1);
   assert.match(ui.document.html,/需求暗金/); assert.match(ui.document.html,/需求套装/);
   assert.equal(ui.document.querySelectorAll('[data-filter-toggle]').filter(input=>input.dataset.filterToggle==='unique').length,new Set(ui.state.filterDraft.uniqueIds).size);
-  for(const step of [2,3,4]) {ui.click(`[data-filter-step="${step}"]`);assert.equal(ui.state.filterStep,step);}
-  assert.equal(ui.document.querySelectorAll('[data-filter-group-show]').length,VALUE_FILTER_GROUPS.length+ui.state.filterDraft.equipmentGroups.length);
+  for(const step of [2,3,4,5]) {ui.click(`[data-filter-step="${step}"]`);assert.equal(ui.state.filterStep,step);}
+  assert.equal(ui.document.querySelectorAll('[data-filter-group-show]').length,VALUE_FILTER_GROUPS.length-1);
   assert.equal(ui.document.querySelectorAll('[data-filter-family]').length,6);
   assert.equal(ui.control('[data-filter-family="equipment"]').open,true);
   assert.equal(ui.control('[data-filter-family="resources"]').open,false);
@@ -156,20 +150,20 @@ test('idol needs use compatible prefix and suffix selections and clear incompati
   ui.control(`[data-filter-idol-shape="${idol.id}"]`).emit('change','28');assert.deepEqual(plain(idol.affixIds),[]);
   affixInput(0).emit('change','107');affixInput(1).emit('change','117');
   assert.deepEqual(plain(idol.affixIds),[107,117]);
-  ui.click('[data-filter-step="4"]');assert.equal(ui.control('#filter-download').disabled,false);ui.click('#filter-download');
+  ui.click('[data-filter-step="5"]');assert.equal(ui.control('#filter-download').disabled,false);ui.click('#filter-download');
   assert.match(ui.downloads[0][0],/<EquipmentType>IDOL_1x2<\/EquipmentType>/);
   ui.click('[data-filter-step="2"]');ui.control(`[data-filter-idol-remove="${idol.id}"]`).emit('click');assert.equal(ui.state.filterDraft.idols.length,0);
 });
 
 test('group visibility and styles persist with language, stage and disclosure changes and affect real XML',()=>{
-  const ui=workbench({step:4});
+  const ui=workbench({step:5});
   const family=ui.control('[data-filter-family="resources"]');family.open=true;family.emit('toggle');
   ui.control('[data-filter-group-show="glyph"]').emit('change','hide');
   assert.equal(ui.control('[data-filter-family="resources"]').open,true);
   ui.control('[data-filter-group-color="unique_needed"]').emit('change','9');
   ui.check(ui.control('[data-filter-group-emphasis="unique_needed"]'),false);
   const before=plain(ui.state.filterDraft);
-  ui.click('[data-filter-step="1"]');ui.state.language='en';ui.render();ui.click('[data-filter-step="4"]');
+  ui.click('[data-filter-step="1"]');ui.state.language='en';ui.render();ui.click('[data-filter-step="5"]');
   assert.deepEqual(plain(ui.state.filterDraft),before);
   ui.control('#filter-name').emit('input','Skeleton / value');ui.click('#filter-download');
   assert.equal(ui.downloads.length,1);assert.equal(ui.downloads[0][1],'Skeleton _ value.xml');assert.equal(ui.state.filterDirty,false);
@@ -191,7 +185,7 @@ test('all additional idol affixes remain visible and can be removed independentl
 });
 
 test('correcting the filter name immediately restores download and escaping cannot inject controls',()=>{
-  const ui=workbench({step:4});ui.control('#filter-name').emit('input','');
+  const ui=workbench({step:5});ui.control('#filter-name').emit('input','');
   assert.equal(ui.control('#filter-download').disabled,true);assert.equal(ui.control('#filter-export-error').hidden,false);
   ui.control('#filter-name').emit('input','价值 <input> & 中文');
   assert.equal(ui.control('#filter-download').disabled,false);assert.equal(ui.control('#filter-export-error').hidden,true);
@@ -208,193 +202,47 @@ test('replacing a build resets only the value wizard UI candidate state',()=>{
   assert.equal(ui.state.filterUi.query.unique,undefined);
 });
 
-test('equipment slider updates percentage, mapped score and example live and retains focus after commits',()=>{
-  const ui=workbench({step:4});
-  const group=ui.state.filterDraft.equipmentGroups.at(-1);
-  const selector=`[data-filter-equipment-threshold="${group.id}"]`;
-  const slider=ui.control(selector);slider.focus();
-  const before=ui.document.renderCount;
-  slider.emit('input','77');
-  assert.equal(ui.document.renderCount,before,'pointer dragging must not replace the range control');
-  assert.equal(ui.control(selector),slider);
-  assert.equal(ui.document.activeElement,slider);
-  assert.equal(group.threshold,77);
-  assert.equal(ui.control(`[data-filter-equipment-score="${group.id}"]`).value,'77');
-  assert.equal(ui.control(`[data-filter-score-value="${group.id}"]`).textContent,'30.8 分');
-  assert.equal(ui.control(`#filter-score-example-${group.id}`).textContent,`例：${getEquipmentScoreThreshold(77,ui.state.filterDraft.scoring).example.zh}`);
-  assert.equal(group.name,'77%','untouched percentage names follow the threshold');
-  assert.equal(ui.control(`[data-filter-equipment-name="${group.id}"]`).value,'77%');
-  slider.emit('change','77');
-  assert.deepEqual(ui.document.querySelectorAll('[data-filter-equipment-threshold]').map(input=>Number(input.value)),[77,25,10]);
-  assert.equal(ui.document.activeElement,ui.control(selector));
-  // A subsequent keyboard change must still target the focused range after the first redraw.
-  ui.document.activeElement.emit('input','78');ui.document.activeElement.emit('change','78');
-  assert.equal(group.threshold,78);assert.equal(ui.document.activeElement,ui.control(selector));
-});
 
-test('custom equipment groups can be added, renamed, disabled independently from hiding, restored and deleted',()=>{
-  const ui=workbench({step:4});ui.click('#filter-add-equipment-group');
-  const group=ui.state.filterDraft.equipmentGroups.at(-1), id=group.id;
-  assert.equal(group.name,'过渡装备');assert.equal(group.threshold,30);
-  const name=ui.control(`[data-filter-equipment-name="${id}"]`);
-  name.emit('input','开荒 <T4>');name.emit('change');
-  ui.control(`[data-filter-equipment-threshold="${id}"]`).emit('change','35');
-  assert.equal(group.name,'开荒 <T4>','custom names are never replaced by percentage labels');
-  assert.match(ui.document.html,/开荒 &lt;T4&gt;/);
-  ui.control(`[data-filter-group-show="${id}"]`).emit('change','hide');
-  ui.control(`[data-filter-group-color="${id}"]`).emit('change','9');
-  ui.check(ui.control(`[data-filter-group-emphasis="${id}"]`),true);
-  let rules=generateValueFilter(ui.state.filterDraft).rules.filter(rule=>rule.groupId===id);
-  assert.ok(rules.length);assert.ok(rules.every(rule=>rule.type==='HIDE'));
-  const saved=plain(group);
-  ui.check(ui.control(`[data-filter-equipment-enabled="${id}"]`),false);
-  assert.deepEqual(plain(group),{...saved,enabled:false});
-  assert.equal(generateValueFilter(ui.state.filterDraft).rules.some(rule=>rule.groupId===id),false);
-  assert.equal(ui.control(`[data-filter-group-color="${id}"]`).disabled,false,'disabled groups remain editable');
-  ui.click('[data-filter-step="2"]');ui.state.language='en';ui.render();ui.click('[data-filter-step="4"]');
-  assert.deepEqual(plain(group),{...saved,enabled:false});
-  ui.check(ui.control(`[data-filter-equipment-enabled="${id}"]`),true);
-  rules=generateValueFilter(ui.state.filterDraft).rules.filter(rule=>rule.groupId===id);
-  assert.ok(rules.length);assert.ok(rules.every(rule=>rule.type==='HIDE'&&rule.style.color===9&&rule.style.emphasized));
-  ui.click(`[data-filter-equipment-delete="${id}"]`);
-  assert.equal(ui.state.filterDraft.equipmentGroups.some(group=>group.id===id),false);
-  assert.equal(ui.document.querySelector(`[data-filter-equipment-name="${id}"]`),null);
-});
 
-test('all scoring groups may be removed while fixed equipment fallbacks remain editable',()=>{
-  const ui=workbench({step:4});
-  for(const id of ui.state.filterDraft.equipmentGroups.map(group=>group.id))ui.click(`[data-filter-equipment-delete="${id}"]`);
-  assert.equal(ui.state.filterDraft.equipmentGroups.length,0);
-  assert.equal(ui.document.querySelectorAll('[data-filter-equipment-threshold]').length,0);
-  assert.ok(ui.control('[data-filter-group-show="equipment_other_exalted"]'));
-  assert.ok(ui.control('[data-filter-group-show="equipment_other"]'));
-  assert.equal(ui.control('#filter-download').disabled,false);
-  ui.click('#filter-add-equipment-group');assert.equal(ui.state.filterDraft.equipmentGroups.length,1);
-});
-
-test('the score table displays T7 through T1 defaults, edits negative decimals in place and restores defaults',()=>{
-  const ui=workbench({step:4,useDefaultScoring:true}), draft=ui.state.filterDraft;
-  const scoringInputs=ui.document.querySelectorAll('[data-filter-score-category]');
-  assert.equal(scoringInputs.length,21);
-  for(const category of ['high','medium','low']) {
-    const row=scoringInputs.filter(input=>input.dataset.filterScoreCategory===category);
-    assert.deepEqual(row.map(input=>Number(input.dataset.filterScoreTier)),[7,6,5,4,3,2,1]);
-    assert.deepEqual(row.map(input=>Number(input.value)),[...VALUE_FILTER_DEFAULT_SCORING[category]].reverse());
-    assert.ok(row.every(input=>input.attributes.step==='0.01'));
-  }
-  assert.match(ui.document.html,/高价值/);assert.match(ui.document.html,/有效/);assert.match(ui.document.html,/无效/);
-  assert.match(ui.document.html,/T8 按 T7 计分/);assert.equal(ui.document.querySelector('#filter-low-penalty'),null);
-  const input=scoringInputs.find(input=>input.dataset.filterScoreCategory==='low'&&input.dataset.filterScoreTier==='1');
-  input.focus();const before=ui.document.renderCount, oldGroups=plain(draft.equipmentGroups);
-  input.emit('input','-0.3');input.emit('change');
-  assert.equal(draft.scoring.low[0],-0.3);
-  assert.equal(ui.document.renderCount,before);assert.equal(ui.document.activeElement,input);
-  for(const group of draft.equipmentGroups) {
-    const slider=ui.control(`[data-filter-equipment-threshold="${group.id}"]`);
-    assert.equal(slider.attributes.min,'1');assert.equal(slider.attributes.max,'100');
-    assert.equal(ui.control(`#filter-score-example-${group.id}`).textContent,`例：${getEquipmentScoreThreshold(group.threshold,draft.scoring).example.zh}`);
-  }
-  const t7=scoringInputs.find(input=>input.dataset.filterScoreCategory==='high'&&input.dataset.filterScoreTier==='7');
-  t7.emit('input','12.5');
-  const full=draft.equipmentGroups.find(group=>group.threshold===100);
-  assert.equal(ui.control(`[data-filter-score-value="${full.id}"]`).textContent,'50 分','100% must track four high-value T7 affixes');
-  assert.equal(ui.document.renderCount,before);
-  assert.equal(VALUE_FILTER_DEFAULT_SCORING.low[0],-0.2,'editing must not mutate the defaults');
-  ui.click('#filter-reset-scoring');assert.deepEqual(plain(draft.scoring),plain(VALUE_FILTER_DEFAULT_SCORING));
-  assert.deepEqual(plain(draft.equipmentGroups),oldGroups);
-  assert.equal(ui.control('[data-filter-scoring]').open,true);
-});
-
-test('real default scores show concise approximation status that updates after score edits',()=>{
-  const ui=workbench({step:4,useDefaultScoring:true}), draft=ui.state.filterDraft;
-  assert.deepEqual(plain(draft.scoring),plain(VALUE_FILTER_DEFAULT_SCORING));
-  assert.equal(ui.control('#filter-download').disabled,false);
-  assert.equal(generateValueFilter(draft).diagnostics.approximate,true);
-  assert.equal(ui.control('#filter-approximation').hidden,false);
-  assert.match(ui.document.html,/近似过滤：可能多保留部分装备/);
-  const before=plain(draft.equipmentGroups);
-  for(const input of ui.document.querySelectorAll('[data-filter-score-category]')) {
-    input.emit('input',String({high:10,medium:4,low:0}[input.dataset.filterScoreCategory]));
-  }
-  const output=generateValueFilter(draft);
-  assert.equal(ui.control('#filter-download').disabled,false);assert.equal(ui.control('#filter-scoring-error').hidden,true);
-  assert.equal(ui.control('#filter-approximation').hidden,!output.diagnostics.approximate);
-  assert.equal(ui.control('#filter-rule-count').textContent,`${output.rules.length} / 200`);
-  assert.deepEqual(plain(draft.equipmentGroups),before);
-  for(const group of draft.equipmentGroups) {
-    assert.equal(ui.control(`[data-filter-group-rule-count="${group.id}"]`).textContent,`${output.groups.find(g=>g.id===group.id).ruleCount} 条自动规则`);
-    assert.equal(ui.control(`#filter-score-example-${group.id}`).textContent,`例：${getEquipmentScoreThreshold(group.threshold,draft.scoring).example.zh}`);
-  }
-  ui.click('#filter-download');assert.equal(ui.downloads.length,1);
-});
-
-test('invalid score cells are preserved and block export until corrected instead of applying defaults',()=>{
-  const ui=workbench({step:4});
-  const field=()=>ui.document.querySelectorAll('[data-filter-score-category]').find(input=>input.dataset.filterScoreCategory==='high'&&input.dataset.filterScoreTier==='7');
-  const input=field();input.focus();input.emit('input','');
-  assert.equal(ui.state.filterDraft.scoring.high[6],'');assert.equal(ui.document.activeElement,input);
-  assert.equal(ui.control('#filter-download').disabled,true);assert.equal(ui.control('#filter-scoring-error').hidden,false);
-  assert.ok(ui.document.querySelectorAll('[data-filter-equipment-threshold]').every(slider=>slider.disabled));
-  ui.click('#filter-download');assert.equal(ui.downloads.length,0);
-  ui.click('[data-filter-step="3"]');ui.click('[data-filter-step="4"]');
-  assert.equal(field().value,'');assert.equal(ui.control('#filter-download').disabled,true);
-  field().emit('input','10');
-  assert.equal(ui.state.filterDraft.scoring.high[6],10);assert.equal(ui.control('#filter-download').disabled,false);
-  assert.equal(ui.control('#filter-scoring-error').hidden,true);
-  for(const value of ['0','-0.2']) {
-    field().emit('input',value);assert.equal(ui.control('#filter-download').disabled,true);
-  }
-  field().emit('input','10');assert.equal(ui.control('#filter-download').disabled,false);
-});
-
-test('direct percentage thresholds synchronize scores and sliders while preserving invalid input and focus',()=>{
-  const ui=workbench({step:4}), group=ui.state.filterDraft.equipmentGroups.at(-1);
-  const input=ui.control(`[data-filter-equipment-score="${group.id}"]`), slider=ui.control(`[data-filter-equipment-threshold="${group.id}"]`), before=ui.document.renderCount;
-  input.focus();input.emit('input','58');input.emit('change');
-  assert.equal(group.threshold,58);assert.equal(Number(slider.value),58);assert.equal(group.name,'58%');
-  assert.equal(ui.document.renderCount,before);assert.equal(ui.document.activeElement,input);
-  input.emit('input','');
-  assert.equal(group.threshold,'');assert.equal(ui.control('#filter-download').disabled,true);assert.equal(slider.disabled,true);
-  for(const value of ['-1','101','5.8']) { input.emit('input',value);assert.equal(ui.control('#filter-download').disabled,true); }
-  input.emit('input','70');
-  assert.equal(group.threshold,70);assert.equal(Number(slider.value),70);assert.equal(slider.disabled,false);
-  assert.equal(group.name,'70%');assert.equal(ui.control(`[data-filter-score-value="${group.id}"]`).textContent,'28 分');
-  assert.equal(ui.control('#filter-download').disabled,false);
-  assert.equal(ui.document.activeElement,input);assert.equal(ui.document.renderCount,before);
-  ui.click('#filter-download');assert.equal(ui.downloads.length,1);assert.match(ui.downloads[0][0],/70%/);
-});
-
-test('equipment name validation updates export immediately without replacing the editing control',()=>{
-  const ui=workbench({step:4}), group=ui.state.filterDraft.equipmentGroups[0];
-  const selector=`[data-filter-equipment-name="${group.id}"]`, input=ui.control(selector), before=ui.document.renderCount;
-  input.emit('input','');assert.equal(ui.control('#filter-download').disabled,true);
-  input.emit('input','精挑装备');assert.equal(ui.control('#filter-download').disabled,false);
-  input.emit('change');assert.equal(ui.control(selector),input);assert.equal(ui.document.renderCount,before);
-  ui.click('#filter-download');assert.equal(ui.downloads.length,1);assert.match(ui.downloads[0][0],/精挑装备/);
-});
-
-test('fixed equipment group names edit live, survive navigation and appear in exported XML',()=>{
-  const ui=workbench({step:4});
-  for(const id of ['equipment_other_exalted','equipment_other']) {
-    const input=ui.control(`[data-filter-equipment-name="${id}"]`), before=ui.document.renderCount;
-    input.focus();input.emit('input','');
-    assert.equal(ui.control('#filter-download').disabled,true);
-    input.emit('input',`备用 <${id}>`);
-    assert.equal(ui.control('#filter-download').disabled,false);
-    assert.equal(ui.control(`[data-filter-group-preview="${id}"]`).textContent,`备用 <${id}>`);
-    assert.equal(ui.document.renderCount,before);
-    assert.equal(ui.document.activeElement,input);
-  }
-  ui.click('[data-filter-step="2"]');ui.state.language='en';ui.render();ui.click('[data-filter-step="4"]');
+test('fixed categories have no score, threshold, add, delete or rename controls',()=>{
+  const ui=workbench({step:5});
+  for(const name of ['核心词缀崇高装备','有效词缀崇高装备','考虑打造装备','开荒过渡装备'])assert.match(ui.document.html,new RegExp(name));
+  assert.equal(ui.document.querySelectorAll('[data-filter-group-show]').filter(c=>c.dataset.filterGroupShow.startsWith('equipment_')).length,4);
+  assert.doesNotMatch(ui.document.html,/data-filter-score|data-filter-equipment|filter-add-equipment-group|词缀评分|近似过滤/);
+  ui.control('[data-filter-group-show="equipment_leveling"]').emit('change','hide');
   ui.click('#filter-download');
-  for(const id of ['equipment_other_exalted','equipment_other']) {
-    assert.equal(ui.control(`[data-filter-equipment-name="${id}"]`).value,`备用 <${id}>`);
-    assert.ok(ui.downloads[0][0].includes(`<nameOverride>备用 &lt;${id}&gt;</nameOverride>`));
-  }
+  assert.equal(ui.downloads.length,1);
+  const rules=generateValueFilter(ui.state.filterDraft).rules;
+  assert.equal(rules.find(r=>r.groupId==='equipment_leveling').type,'HIDE');
+});
+
+test('hidden-types page changes equipment families and exact class idols and preserves them across navigation',()=>{
+  const ui=workbench({step:4});
+  ui.state.filterDraft.build.classId=1;ui.render();
+  ui.click('[data-filter-exclude-family="twohand"]');
+  assert.deepEqual(plain(ui.state.filterDraft.exclusions.equipmentTypeIds),[12,13,14,15,16]);
+  ui.check(ui.control('[data-filter-exclude-class="4"]'),true);
+  assert.ok(ui.state.filterDraft.exclusions.idolBaseKeys.includes('30:4'));
+  assert.ok(!ui.state.filterDraft.exclusions.idolBaseKeys.includes('30:1'));
+  const roguePanel=ui.control('[data-filter-exclusion-panel="4"]');roguePanel.open=true;roguePanel.emit('toggle');
+  ui.check(ui.control('[data-filter-exclude-base="30:4"]'),false);
+  assert.equal(ui.control('[data-filter-exclusion-panel="4"]').open,true);
+  assert.equal(ui.control('[data-filter-exclude-class="4"]').indeterminate,true);
+  ui.click('#filter-hide-other-class-idols');
+  assert.ok(ui.state.filterDraft.exclusions.idolBaseKeys.includes('30:4'));
+  assert.ok(!ui.state.filterDraft.exclusions.idolBaseKeys.includes('30:1'));
+  const before=plain(ui.state.filterDraft.exclusions);
+  ui.click('[data-filter-step="5"]');ui.state.language='en';ui.render();
+  assert.deepEqual(plain(ui.state.filterDraft.exclusions),before);
+  ui.click('#filter-download');assert.equal(ui.downloads.length,1);
+  const output=generateValueFilter(ui.state.filterDraft);
+  assert.equal(output.rules[0].type,'HIDE');assert.equal(output.rules[0].groupId,'excluded');
+  ui.click('[data-filter-step="4"]');ui.click('#filter-clear-exclusions');
+  assert.deepEqual(plain(ui.state.filterDraft.exclusions),{equipmentTypeIds:[],idolTypeIds:[],idolBaseKeys:[]});
 });
 
 test('color and emphasis update actual preview styles without replacing focused controls',()=>{
-  const ui=workbench({step:4}), id=ui.state.filterDraft.equipmentGroups[0].id;
+  const ui=workbench({step:5}), id='equipment_core';
   const color=ui.control(`[data-filter-group-color="${id}"]`), preview=ui.control(`[data-filter-group-preview="${id}"]`), swatch=ui.control(`[data-filter-group-swatch="${id}"]`);
   const before=ui.document.renderCount;
   color.focus();color.emit('input','9');color.emit('change','9');
@@ -411,22 +259,5 @@ test('color and emphasis update actual preview styles without replacing focused 
   assert.ok(rules.length&&rules.every(rule=>rule.style.color===9&&rule.style.emphasized));
   ui.control(`[data-filter-group-show="${id}"]`).emit('change','hide');
   assert.equal(ui.control(`[data-filter-group-preview="${id}"]`).style.getPropertyValue('--loot-color'),expected);
-  ui.check(ui.control(`[data-filter-equipment-enabled="${id}"]`),false);
-  assert.equal(ui.control(`[data-filter-group-preview="${id}"]`).style.getPropertyValue('--loot-color'),expected);
   assert.match(ui.document.html,/颜色预览/);
-  assert.match(ui.document.html,new RegExp(`data-filter-group-preview-status="${id}">已停用`));
-});
-
-test('unsafe approximate hiding blocks export without dropping groups and recovers when set to Show',()=>{
-  const groups=createValueFilterDraft(build).equipmentGroups;groups[0].show=false;
-  const before=plain(groups), ui=workbench({step:4,useDefaultScoring:true,patch:{equipmentGroups:groups}});
-  assert.equal(ui.control('#filter-download').disabled,true);
-  assert.equal(ui.control('#filter-export-error').hidden,false);
-  assert.match(ui.document.html,/近似/);
-  assert.deepEqual(plain(ui.state.filterDraft.equipmentGroups),before);
-  assert.equal(ui.document.querySelectorAll('[data-filter-equipment-enabled]').length,groups.length);
-  ui.click('#filter-download');assert.equal(ui.downloads.length,0);
-  ui.control(`[data-filter-group-show="${groups[0].id}"]`).emit('change','show');
-  assert.equal(ui.control('#filter-download').disabled,false);assert.equal(ui.control('#filter-approximation').hidden,false);
-  ui.click('#filter-download');assert.equal(ui.downloads.length,1);
 });

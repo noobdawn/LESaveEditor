@@ -5,24 +5,23 @@ import itemCatalog from './game-item-data.json' with { type: 'json' };
 import { normalizePlannerBuild } from './planner.js';
 import { resolvePlannerItemId } from './items.js';
 import { EQUIPMENT_TYPES, FILTER_VERSION, MAX_FILTER_RULES, FilterError, filterLabel } from './loot-filter.js';
-import { compileEquipmentScores, EQUIPMENT_SCORE_FALLBACK } from './equipment-score-compiler.js';
 
 export const COMMON_AFFIX_GROUPS = commonAffixes.groups;
 export const VALUE_FILTER_DEFAULT_OPTIONS = Object.freeze({ rareUniqueThreshold: 0.9, rareSetThreshold: 0.65 });
-// Stored in ascending tier order; the editor presents T7 first. T8 uses the T7 value.
-export const VALUE_FILTER_DEFAULT_SCORING = Object.freeze({
-  high: Object.freeze([0.4, 0.8, 1.2, 1.6, 2, 5, 10]),
-  medium: Object.freeze([0.2, 0.4, 0.6, 0.8, 1, 2, 4]),
-  low: Object.freeze([-0.2, -0.2, -0.2, -0.2, 0, 1, 2]),
-});
 const label = (zh, en) => ({ zh, en });
 const group = (id, zh, en, descriptionZh, descriptionEn, color, emphasized = false, show = true) => ({ id, name: label(zh, en), description: label(descriptionZh, descriptionEn), defaults: { show, color, emphasized } });
-/** Logical groups are editable independently. Compiled precedence rules may repeat a group. */
+/** Fixed equipment categories share native item-type and affix-ID sets. */
+export const EQUIPMENT_FILTER_GROUPS = Object.freeze([
+  group('equipment_core', '核心词缀崇高装备', 'Core-affix exalted equipment', '至少一条高价值词缀达到 T6/T7。', 'At least one high-value affix at T6 or higher.', 6, true),
+  group('equipment_useful', '有效词缀崇高装备', 'Useful-affix exalted equipment', '至少一条有效词缀达到 T6/T7，并且至少三条有效词缀。高价值词缀也计入有效数量。', 'At least one useful affix at T6 or higher and at least three useful affixes in total, including high-value affixes.', 4, true),
+  group('equipment_crafting', '考虑打造装备', 'Crafting candidates', '至少两条有效词缀达到 T5，其中至少一条是高价值词缀。', 'At least two useful affixes at T5 or higher, including at least one high-value affix at T5 or higher.', 3),
+  group('equipment_leveling', '开荒过渡装备', 'Leveling equipment', '至少一条高价值词缀，并且至少三条有效词缀，不限层级。', 'At least one high-value affix and at least three useful affixes in total, at any tier.', 1),
+]);
 export const VALUE_FILTER_GROUPS = Object.freeze([
+  ...EQUIPMENT_FILTER_GROUPS,
   group('unique_needed', '需求暗金', 'Needed uniques', '按暗金编号保留，优先于稀有度与潜能。', 'Selected unique identities take precedence over rarity and potential.', 7, true),
   group('idol_double', '双有效词缀神像', 'Two useful idol affixes', '同形状的所选需求中，一条前缀和一条后缀同时符合，允许重组。', 'A selected prefix and suffix of the same shape; selected pairs may recombine.', 9, true),
   group('idol_single', '单有效词缀神像', 'One useful idol affix', '符合一个所选词缀，未达到双词缀档。', 'One selected affix without reaching the two-affix group.', 10),
-  group('equipment_other_exalted', '其他高阶崇高装备', 'Other high-tier exalted equipment', '未命中有效词缀组，拥有至少一条 T7+ 或两条 T6+。', 'No useful-affix group matched; at least one T7+ or two T6+ affixes.', 11),
   group('unique_rare', '高价值暗金', 'High-value uniques', '随机池稀有度达到门槛，不代表 Boss 掉率或价格。', 'Meets the random-pool rarity threshold; not a boss drop rate or price.', 8, true),
   group('unique_high_lp', '高潜暗金（2–4）', 'High-potential uniques (2–4)', '拥有 2–4 传奇潜能的普通暗金；不包含 Weaver’s Will。', 'Ordinary uniques with 2–4 legendary potential; excludes Weaver’s Will.', 5, true),
   group('set_valuable', '高价值套装', 'Valuable set items', '配装需要、手动选择，或随机池稀有度达到门槛的套装。', 'Needed or selected set items, or sets meeting the random-pool rarity threshold.', 16, true),
@@ -37,7 +36,6 @@ export const VALUE_FILTER_GROUPS = Object.freeze([
   group('altar', '神像祭坛', 'Idol altars', '祭坛独立保留，不随普通装备兜底隐藏。', 'Altars have their own group, separate from other equipment.', 15),
 ]);
 const BY_GROUP = Object.fromEntries(VALUE_FILTER_GROUPS.map(g => [g.id, g]));
-const RENAMABLE_EQUIPMENT_GROUPS = new Set(['equipment_other_exalted', 'equipment_other']);
 const GEAR_TYPES = Array.from({ length: 25 }, (_, i) => i);
 const IDOL_TYPES = Array.from({ length: 9 }, (_, i) => i + 25);
 const ORDINARY_RARITIES = ['NORMAL', 'MAGIC', 'RARE', 'EXALTED'];
@@ -58,76 +56,6 @@ function ids(values, dictionary, field) {
   const result = sorted(values.map(id => number(id, 0, 65535, field, true)));
   if (result.some(id => !Object.hasOwn(dictionary, id))) fail('UNKNOWN_FILTER_ID', `${field} 包含未知编号`, `Unknown ID in ${field}`);
   return result;
-}
-function equipmentGroupName(value) {
-  if (typeof value !== 'string' || !value.trim() || value.length > 80) fail('INVALID_SCORE_GROUP_NAME', '装备组名称须为 1–80 个字符', 'Equipment group names must have 1–80 characters');
-  escapeXml(value);
-  return value;
-}
-
-function scoreNumber(value, field, min = -1000, max = 1000) {
-  const result = number(value, min, max, field);
-  if (Math.abs(result * 100 - Math.round(result * 100)) > 1e-7) fail('INVALID_SCORE_PRECISION', '评分最多保留两位小数', 'Scores support at most two decimal places');
-  return Math.round(result * 100) / 100;
-}
-export function normalizeEquipmentScoring(scoring = VALUE_FILTER_DEFAULT_SCORING) {
-  if (!scoring || typeof scoring !== 'object') fail('INVALID_EQUIPMENT_SCORING', '词缀评分格式无效', 'Invalid affix scores');
-  const normalized = Object.fromEntries(['high', 'medium', 'low'].map(category => {
-    const values = scoring[category];
-    if (!Array.isArray(values) || values.length !== 7) fail('INVALID_EQUIPMENT_SCORING', '每类词缀需要 T1–T7 的分数', 'Each category requires T1–T7 scores');
-    return [category, Array.from(values, (value, index) => scoreNumber(value, `scoring.${category}.T${index + 1}`))];
-  }));
-  if (normalized.high[6] <= 0) fail('INVALID_SCORE_REFERENCE', '高价值 T7 分数须大于 0', 'The high-value T7 score must be greater than zero');
-  return normalized;
-}
-export function getEquipmentScoreRange(scoring = VALUE_FILTER_DEFAULT_SCORING) {
-  normalizeEquipmentScoring(scoring);
-  return { min: 1, max: 100, step: 1 };
-}
-let scoreGroupSequence = 0;
-/** Disabled groups are omitted; hidden groups retain terminal HIDE rules. */
-export function createEquipmentScoreGroup(overrides = {}) {
-  const threshold = overrides.threshold ?? 30;
-  return { id: `equipment_score_${Date.now()}_${++scoreGroupSequence}`, name: `${threshold}%`, threshold, enabled: true, show: true,
-    color: threshold >= 80 ? 6 : threshold >= 60 ? 4 : 3, emphasized: threshold >= 60, ...overrides };
-}
-const exampleCache = new Map();
-function thresholdExample(scoreUnits, scoring) {
-  const key = JSON.stringify(scoring);
-  if (!exampleCache.has(key)) {
-    const types = ['high', 'medium', 'low'].flatMap(category => scoring[category].map((value, index) => ({ category, tier: index + 1, units: Math.round(value * 100) })));
-    const examples = new Map();
-    const visit = (start, picked, total) => {
-      if (picked.length) {
-        const previous = examples.get(total);
-        // Prefer fewer affixes, then lower tiers, then useful affixes in examples.
-        const rank = [picked.length, Math.max(...picked.map(a => a.tier)), picked.filter(a => a.category === 'low').length, picked.filter(a => a.category === 'high').length];
-        if (!previous || rank.some((n, i) => n < previous.rank[i] && rank.slice(0, i).every((v, j) => v === previous.rank[j]))) examples.set(total, { picked: [...picked], rank });
-      }
-      if (picked.length === 4) return;
-      for (let index = start; index < types.length; index++) visit(index, [...picked, types[index]], total + types[index].units);
-    };
-    visit(0, [], 0);
-    if (exampleCache.size >= 8) exampleCache.delete(exampleCache.keys().next().value);
-    exampleCache.set(key, [...examples].sort((a, b) => a[0] - b[0]));
-  }
-  const entry = exampleCache.get(key).find(([total]) => total >= scoreUnits);
-  if (!entry) return label('—', '—');
-  const counts = new Map();
-  for (const a of entry[1].picked) { const key = `${a.category}:${a.tier}`; counts.set(key, (counts.get(key) ?? 0) + 1); }
-  const describe = language => [...counts].map(([key, count]) => {
-    const [category, tier] = key.split(':');
-    const names = language === 'zh' ? { high: '高价值', medium: '有效', low: '无效' } : { high: 'high-value', medium: 'useful', low: 'unwanted' };
-    return language === 'zh' ? `${count} 条${names[category]} T${tier}` : `${count} ${names[category]} T${tier}`;
-  }).join(' + ');
-  return label(describe('zh'), describe('en'));
-}
-/** 100% is four high-value T7 affixes. Scores are integer hundredths, so round the comparison up. */
-export function getEquipmentScoreThreshold(threshold, scoring = VALUE_FILTER_DEFAULT_SCORING) {
-  const percent = number(threshold, 1, 100, 'threshold', true), scores = normalizeEquipmentScoring(scoring);
-  const scaled = Math.round(scores.high[6] * 100) * 4 * percent;
-  const scoreUnits = Math.ceil(scaled / 100), rawScore = scaled / 10000;
-  return { rawScore, scoreUnits, effectiveScore: scoreUnits / 100, example: thresholdExample(scoreUnits, scores) };
 }
 function readAffix(raw, sourcePath, sourceRole) {
   if (!raw || typeof raw.id !== 'string' || raw.id.length > 80 || !/^A[A-Za-z0-9+/=]+$/.test(raw.id)) fail('UNKNOWN_BUILD_AFFIX', '无法解析配装词缀', 'Cannot decode build affix');
@@ -184,9 +112,8 @@ export function createValueFilterDraft(input) {
   const highAffixIds = sorted(high), mediumAffixIds = sorted(COMMON_AFFIX_GROUPS.flatMap(g => g.affixIds).filter(id => !highAffixIds.includes(id)));
   const groups = Object.fromEntries(VALUE_FILTER_GROUPS.map(g => [g.id, { ...g.defaults }]));
   if (hasUnresolvedTargets) { groups.equipment_other.show = true; groups.idol_other.show = true; }
-  const equipmentGroups = [100, 70, 45].map(threshold => createEquipmentScoreGroup({ id: `equipment_score_${threshold}`, threshold }));
-  return { schemaVersion: 2, name: build.id ? `Build ${build.id}` : 'Build 价值过滤器', language: 'zh', build: { id: build.id, sourceUrl: build.sourceUrl, dataVersion: build.dataVersion }, uniqueIds: sorted(uniqueIds), setIds: sorted(setIds), highAffixIds, mediumAffixIds, idols: [...idolRows.values()],
-    analysis: { targets, warnings, hasUnresolvedTargets, build: { id: build.id, sourceUrl: build.sourceUrl, dataVersion: build.dataVersion }, summary: { equipmentCount: records.filter(r => r.slot !== 'idol').length, idolCount: records.filter(r => r.slot === 'idol').length, uniqueCount: unique(uniqueIds).length, setCount: unique(setIds).length, highAffixCount: highAffixIds.length } }, groups, equipmentGroups, scoring: structuredClone(VALUE_FILTER_DEFAULT_SCORING), options: { ...VALUE_FILTER_DEFAULT_OPTIONS } };
+  return { schemaVersion: 3, name: build.id ? `Build ${build.id}` : 'Build 价值过滤器', language: 'zh', build: { id: build.id, sourceUrl: build.sourceUrl, dataVersion: build.dataVersion, classId: Number(build.data.bio.characterClass) }, uniqueIds: sorted(uniqueIds), setIds: sorted(setIds), highAffixIds, mediumAffixIds, idols: [...idolRows.values()],
+    analysis: { targets, warnings, hasUnresolvedTargets, build: { id: build.id, sourceUrl: build.sourceUrl, dataVersion: build.dataVersion, classId: Number(build.data.bio.characterClass) }, summary: { equipmentCount: records.filter(r => r.slot !== 'idol').length, idolCount: records.filter(r => r.slot === 'idol').length, uniqueCount: unique(uniqueIds).length, setCount: unique(setIds).length, highAffixCount: highAffixIds.length } }, groups, exclusions: { equipmentTypeIds: [], idolTypeIds: [], idolBaseKeys: [] }, options: { ...VALUE_FILTER_DEFAULT_OPTIONS } };
 }
 
 const rarity = rarities => ({ type: 'rarity', rarities });
@@ -202,7 +129,7 @@ function viable(c) {
   return c.affixIds.length > 0 && maxCount >= c.minCount && definitions.reduce((sum, a) => sum + a.tierCount, 0) >= c.minTotalTier;
 }
 function validateDraft(draft) {
-  if (!draft || draft.schemaVersion !== 2 || typeof draft.name !== 'string' || !draft.name.trim() || draft.name.length > 200 || !['zh', 'en'].includes(draft.language)) fail('INVALID_FILTER_DRAFT', '请填写过滤器名称并选择语言', 'Enter a filter name and language');
+  if (!draft || draft.schemaVersion !== 3 || typeof draft.name !== 'string' || !draft.name.trim() || draft.name.length > 200 || !['zh', 'en'].includes(draft.language)) fail('INVALID_FILTER_DRAFT', '请填写过滤器名称并选择语言', 'Enter a filter name and language');
   const high = ids(draft.highAffixIds, catalog.affixes, 'highAffixIds'), medium = ids(draft.mediumAffixIds, catalog.affixes, 'mediumAffixIds').filter(id => !high.includes(id));
   if ([...high, ...medium].some(id => !isGearAffix(catalog.affixes[id]))) fail('INVALID_EQUIPMENT_AFFIX', '装备价值池包含神像或固有属性', 'Equipment pools contain idol or inherent affixes');
   const uniqueIds = ids(draft.uniqueIds, catalog.uniques, 'uniqueIds'), setIds = ids(draft.setIds, catalog.uniques, 'setIds');
@@ -210,23 +137,12 @@ function validateDraft(draft) {
   const options = { ...VALUE_FILTER_DEFAULT_OPTIONS, ...draft.options };
   options.rareUniqueThreshold = number(options.rareUniqueThreshold, 0, 1, 'rareUniqueThreshold');
   options.rareSetThreshold = number(options.rareSetThreshold, 0, 1, 'rareSetThreshold');
-  const scoring = normalizeEquipmentScoring(draft.scoring);
   const styles = Object.fromEntries(VALUE_FILTER_GROUPS.map(g => {
     const style = draft.groups?.[g.id] ?? g.defaults;
     if (typeof style.show !== 'boolean' || typeof style.emphasized !== 'boolean') fail('INVALID_FILTER_STYLE', '分组显示设置无效', 'Invalid group visibility or emphasis');
-    const name = RENAMABLE_EQUIPMENT_GROUPS.has(g.id) && style.name !== undefined ? equipmentGroupName(style.name) : undefined;
-    return [g.id, { show: style.show, emphasized: style.emphasized, color: number(style.color, 0, 17, `${g.id}.color`, true), ...(name !== undefined ? { name } : {}) }];
+    return [g.id, { show: style.show, emphasized: style.emphasized, color: number(style.color, 0, 17, `${g.id}.color`, true) }];
   }));
-  if (!Array.isArray(draft.equipmentGroups)) fail('INVALID_SCORE_GROUPS', '装备评分组格式无效', 'Invalid equipment score groups');
-  const equipmentIds = new Set(Object.keys(BY_GROUP));
-  const equipmentGroups = draft.equipmentGroups.map(g => {
-    if (!g || typeof g.id !== 'string' || !/^[A-Za-z][A-Za-z0-9_-]{0,99}$/.test(g.id) || equipmentIds.has(g.id)) fail('INVALID_SCORE_GROUP_ID', '装备组编号缺失、重复或无效', 'Missing, duplicate or invalid equipment group ID');
-    equipmentIds.add(g.id);
-    equipmentGroupName(g.name);
-    if (typeof g.enabled !== 'boolean' || typeof g.show !== 'boolean' || typeof g.emphasized !== 'boolean') fail('INVALID_SCORE_GROUP_OPTION', '装备组开关或显示设置无效', 'Invalid equipment group enabled state or style');
-    const threshold = number(g.threshold, 1, 100, 'threshold', true), color = number(g.color, 0, 17, `${g.id}.color`, true);
-    return { ...g, color, threshold, ...getEquipmentScoreThreshold(threshold, scoring), description: label(`≥ ${threshold}%`, `≥ ${threshold}%`) };
-  }).sort((a, b) => b.threshold - a.threshold);
+  const exclusions = validateExclusions(draft.exclusions);
   if (draft.analysis?.hasUnresolvedTargets && (!styles.equipment_other.show || !styles.idol_other.show)) fail('UNRESOLVED_HIDE_TARGETS', '配装有未解析的目标，不能启用兜底隐藏', 'Unresolved build targets prevent fallback hiding');
   if (!Array.isArray(draft.idols)) fail('INVALID_IDOL_FILTER', '神像需求格式无效', 'Invalid idol targets');
   const idolPools = new Map(), rowIds = new Set();
@@ -239,23 +155,34 @@ function validateDraft(draft) {
     if (row.subTypeId != null && !Object.hasOwn(itemCatalog.bases[type]?.subtypes ?? {}, number(row.subTypeId, 0, 65535, 'subTypeId', true))) fail('INVALID_IDOL_SUBTYPE', '神像底材不属于所选形状', 'Idol base does not belong to the selected shape');
     idolPools.set(type, sorted([...(idolPools.get(type) ?? []), ...selected]));
   }
-  return { high, medium, uniqueIds, setIds, options, scoring, styles, idolPools, equipmentGroups };
+  return { high, medium, uniqueIds, setIds, options, styles, idolPools, exclusions };
 }
 
-/** Compiles the actual additive score. All lower-level rules retain the group's SHOW/HIDE outcome. */
+/** Four fixed, ordered templates; item types and affix alternatives share native ID sets. */
 export function generateValueFilter(draft) {
-  const { high, medium, uniqueIds, setIds, options, scoring, styles, idolPools, equipmentGroups } = validateDraft(draft);
+  const { high, medium, uniqueIds, setIds, options, styles, idolPools, exclusions } = validateDraft(draft);
   const warnings = [...(draft.analysis?.warnings ?? [])], rules = [], useful = sorted([...high, ...medium]);
-  const allGearAffixes = Object.values(catalog.affixes).filter(isGearAffix).map(a => a.id), low = allGearAffixes.filter(id => !useful.includes(id));
-  const definitions = { ...BY_GROUP, ...Object.fromEntries(equipmentGroups.map(g => [g.id, g])) };
-  for (const g of equipmentGroups) styles[g.id] = { show: g.show, color: g.color, emphasized: g.emphasized };
+  const definitions = BY_GROUP;
   const add = (groupId, key, conditions) => {
     if (!conditions.every(viable) || conditions.some(c => c.type === 'unique' && !c.uniqueIds.length)) return;
     const style = styles[groupId]; rules.push({ id: `${groupId}-${key}`, groupId, name: style.name === undefined ? definitions[groupId].name : style.name, description: definitions[groupId].description, type: style.show ? 'SHOW' : 'HIDE', conditions, style: { color: style.color, emphasized: style.emphasized }, order: rules.length });
   };
   const equipment = [rarity(ORDINARY_RARITIES), subtype(GEAR_TYPES)];
+  const excludedTypes = sorted([...exclusions.equipmentTypeIds, ...exclusions.idolTypeIds]);
+  const hide = (key, conditions) => rules.push({ id: `excluded-${key}`, groupId: 'excluded', name: label('隐藏所选类型', 'Hide selected types'), type: 'HIDE', conditions, style: { color: 0, emphasized: false } });
+  if (excludedTypes.length) hide('types', [subtype(excludedTypes)]);
+  for (const type of IDOL_TYPES) {
+    if (exclusions.idolTypeIds.includes(type)) continue;
+    const subTypeIds = exclusions.idolBaseKeys.filter(key => Number(key.split(':')[0]) === type).map(key => Number(key.split(':')[1]));
+    // Native subTypes are respected only when exactly one EquipmentType is selected.
+    if (subTypeIds.length) hide(`idols-${type}`, [{ type: 'subtype', baseTypeIds: [type], subTypeIds }]);
+  }
   add('unique_needed', 'selected', [identities(uniqueIds)]);
-  const equipmentInsertAt = rules.length;
+  add('equipment_core', 'fixed', [rarity(['EXALTED']), subtype(GEAR_TYPES), affix(high, 6)]);
+  add('equipment_useful', 'fixed', [rarity(['EXALTED']), subtype(GEAR_TYPES), affix(useful, 6), affix(useful, 1, 3)]);
+  add('equipment_crafting', 'fixed', [...equipment, affix(high, 5), affix(useful, 5, 2)]);
+  add('equipment_leveling', 'fixed', [...equipment, affix(high), affix(useful, 1, 3)]);
+  add('equipment_other', 'remaining', equipment);
   for (const [baseTypeId, selected] of idolPools) {
     const scope = [rarity(ORDINARY_RARITIES), subtype([baseTypeId])];
     add('idol_double', `shape${baseTypeId}`, [...scope, affix(selected.filter(id => catalog.affixes[id].type === 0)), affix(selected.filter(id => catalog.affixes[id].type === 1))]);
@@ -272,26 +199,11 @@ export function generateValueFilter(draft) {
   add('idol_other', 'remaining', [rarity(ORDINARY_RARITIES), subtype(IDOL_TYPES)]);
   for (const kind of ['glyph', 'rune', 'shard', 'key']) add(kind, 'all', [{ type: 'resource', kind }]);
   add('altar', 'all', [subtype([41])]);
-  const compilation = compileEquipmentScores({ pools: { high, medium, low }, scoring,
-    groups: equipmentGroups.map(g => ({ ...g, threshold: g.scoreUnits / 100 })), catalog, ruleLimit: MAX_FILTER_RULES - rules.length });
-  const staticRuleCount = rules.length;
-  for (const [index, compiled] of compilation.rules.entries()) {
-    if (!compiled.conditions.every(viable)) fail('UNREPRESENTABLE_SCORE_CONDITION', '评分条件无法稳定导入游戏', 'A score condition cannot be preserved by the native editor');
-    const scope = [...equipment, ...compiled.conditions];
-    if (compiled.groupId === EQUIPMENT_SCORE_FALLBACK) {
-      add('equipment_other_exalted', `${index}-t7`, [rarity(['EXALTED']), ...scope.slice(1), affix(allGearAffixes, 7)]);
-      add('equipment_other_exalted', `${index}-t6x2`, [rarity(['EXALTED']), ...scope.slice(1), affix(allGearAffixes, 6, 2)]);
-      add('equipment_other', `${index}-remaining`, scope);
-    } else add(compiled.groupId, `${index}`, scope);
-  }
-  rules.splice(equipmentInsertAt, 0, ...rules.splice(staticRuleCount));
   rules.forEach((rule, index) => { rule.order = index; });
-  if (rules.length > MAX_FILTER_RULES) fail('TOO_MANY_FILTER_RULES', `原生规则超过 ${MAX_FILTER_RULES} 条，请停用部分装备组`, `More than ${MAX_FILTER_RULES} native rules; disable some equipment groups`);
-  if (compilation.diagnostics.approximate) warnings.push(warning('EQUIPMENT_SCORE_APPROXIMATION', '近似过滤：可能多保留部分装备。', 'Approximate filtering: some below-threshold equipment may also be kept.'));
-  warnings.push(warning('EQUIPMENT_SCORE', '100% = 4 条高价值 T7；T8 按 T7 计分。', '100% = four high-value T7 affixes; T8 uses the T7 score.'));
+  if (rules.length > MAX_FILTER_RULES) fail('TOO_MANY_FILTER_RULES', `原生规则超过 ${MAX_FILTER_RULES} 条`, `More than ${MAX_FILTER_RULES} native rules`);
   warnings.push(warning('RELATIVE_UNIQUE_RARITY', '暗金和套装的稀有门槛只比较随机池 rerollChance，不代表 Boss 掉率或市场价格。', 'Unique and set rarity thresholds compare random-pool rerollChance, not boss drop rates or market prices.'));
-  const orderedGroups = [VALUE_FILTER_GROUPS[0], ...equipmentGroups, ...VALUE_FILTER_GROUPS.slice(1)];
-  return { xml: serialize(rules, draft, compilation.diagnostics), rules, warnings, diagnostics: compilation.diagnostics, groups: orderedGroups.map(g => ({ ...g, ...styles[g.id], ruleCount: rules.filter(r => r.groupId === g.id).length })) };
+  const orderedGroups = VALUE_FILTER_GROUPS.filter(g => g.id !== 'equipment_other');
+  return { xml: serialize(rules, draft), rules, warnings, diagnostics: { approximate: false, ruleCount: rules.length, equipmentRuleCount: rules.filter(r => EQUIPMENT_FILTER_GROUPS.some(g => g.id === r.groupId)).length }, groups: orderedGroups.map(g => ({ ...g, ...styles[g.id], ruleCount: rules.filter(r => r.groupId === g.id).length })) };
 }
 
 function escapeXml(value) {
@@ -306,16 +218,16 @@ const RESOURCE_XML = {
 function conditionXml(c) {
   const wrap = (type, body) => `        <Condition i:type="${type}">${body}</Condition>`;
   if (c.type === 'unique') return wrap('UniqueModifiersCondition', c.uniqueIds.map(id => `<Uniques><UniqueId>${id}</UniqueId><Rolls /></Uniques>`).join(''));
-  if (c.type === 'subtype') return wrap('SubTypeCondition', `<type>${c.baseTypeIds.map(id => `<EquipmentType>${EQUIPMENT_TYPES[id]}</EquipmentType>`).join('')}</type><subTypes />`);
+  if (c.type === 'subtype') return wrap('SubTypeCondition', `<type>${c.baseTypeIds.map(id => `<EquipmentType>${EQUIPMENT_TYPES[id]}</EquipmentType>`).join('')}</type><subTypes>${c.subTypeIds?.map(id => `<int>${id}</int>`).join('') ?? ''}</subTypes>`);
   if (c.type === 'rarity') return wrap('RarityCondition', `<rarity>${c.rarities.join(' ')}</rarity>`);
   if (c.type === 'affix') return wrap('AffixCondition', `<affixes>${c.affixIds.map(id => `<int>${id}</int>`).join('')}</affixes><comparsion>${c.comparison ?? 'MORE_OR_EQUAL'}</comparsion><comparsionValue>${c.minTier}</comparsionValue><minOnTheSameItem>${c.minCount}</minOnTheSameItem><combinedComparsion>${c.combinedComparison ?? (c.minTotalTier ? 'MORE_OR_EQUAL' : 'ANY')}</combinedComparsion><combinedComparsionValue>${c.minTotalTier || 1}</combinedComparsionValue><advanced>true</advanced>`);
   if (c.type === 'potential') return wrap('PotentialCondition', ['MinLegendaryPotential', 'MaxLegendaryPotential', 'MinWeaversWill', 'MaxWeaversWill', 'MinWeaversTouch', 'MaxWeaversTouch', 'MinForgingPotential', 'MaxForgingPotential'].map(field => { const value = c[field[0].toLowerCase() + field.slice(1)]; return value == null ? `<${field} i:nil="true" />` : `<${field}>${value}</${field}>`; }).join(''));
   if (c.type === 'resource') { const [type, field, value] = RESOURCE_XML[c.kind]; return wrap(type, `<${field}>${value}</${field}>`); }
   fail('UNKNOWN_FILTER_CONDITION', '无法序列化规则条件', 'Cannot serialize filter condition');
 }
-function serialize(rules, draft, diagnostics = {}) {
+function serialize(rules, draft) {
   const body = [...rules].reverse().map(rule => `    <Rule>\n      <type>${rule.type}</type>\n      <conditions>\n${rule.conditions.map(conditionXml).join('\n')}\n      </conditions>\n      <recolor>${rule.type === 'SHOW'}</recolor>\n      <color>${rule.style.color}</color>\n      <isEnabled>true</isEnabled>\n      <levelDependent_deprecated>false</levelDependent_deprecated>\n      <minLvl_deprecated>0</minLvl_deprecated>\n      <maxLvl_deprecated>0</maxLvl_deprecated>\n      <emphasized>${rule.style.emphasized}</emphasized>\n      <nameOverride>${escapeXml(filterLabel(rule.name, draft.language))}</nameOverride>\n      <SoundId>0</SoundId>\n      <MapIconId>0</MapIconId>\n      <BeamOverride>false</BeamOverride>\n      <BeamSizeOverride>NONE</BeamSizeOverride>\n      <BeamColorOverride>0</BeamColorOverride>\n      <Order>${rule.order}</Order>\n    </Rule>`).join('\n');
-  return `<ItemFilter xmlns:i="http://www.w3.org/2001/XMLSchema-instance">\n  <name>${escapeXml(draft.name)}</name>\n  <filterIcon>0</filterIcon>\n  <filterIconColor>0</filterIconColor>\n  <description>${escapeXml(diagnostics.approximate ? draft.language === 'en' ? 'Approximate equipment scoring: may keep additional below-threshold equipment.' : '近似装备评分：可能多保留部分未达门槛的装备。' : draft.language === 'en' ? 'Build value pools and editable equipment score thresholds.' : '配装价值池与可调装备评分门槛。')}</description>\n  <lastModifiedInVersion>${itemCatalog.gameVersion}</lastModifiedInVersion>\n  <lootFilterVersion>${FILTER_VERSION}</lootFilterVersion>\n  <rules>\n${body}\n  </rules>\n</ItemFilter>\n`;
+  return `<ItemFilter xmlns:i="http://www.w3.org/2001/XMLSchema-instance">\n  <name>${escapeXml(draft.name)}</name>\n  <filterIcon>0</filterIcon>\n  <filterIconColor>0</filterIconColor>\n  <description>${escapeXml(draft.language === 'en' ? 'Four fixed equipment categories and selected hidden item types.' : '四类固定装备规则与所选类型隐藏。')}</description>\n  <lastModifiedInVersion>${itemCatalog.gameVersion}</lastModifiedInVersion>\n  <lootFilterVersion>${FILTER_VERSION}</lootFilterVersion>\n  <rules>\n${body}\n  </rules>\n</ItemFilter>\n`;
 }
 
 function compare(actual, operation, expected) {
@@ -332,7 +244,7 @@ export function matchValueFilterRule(rule, item) {
   const affixes = [...(item.affixes ?? []), ...['sealedAffix', 'corruptedAffix', 'primordialAffix'].map(field => item[field]).filter(Boolean)];
   return rule.conditions.every(c => {
     if (c.type === 'unique') return ['UNIQUE', 'SET', 'LEGENDARY'].includes(item.rarity) && c.uniqueIds.includes(item.uniqueId);
-    if (c.type === 'subtype') return c.baseTypeIds.includes(item.baseTypeId);
+    if (c.type === 'subtype') return c.baseTypeIds.includes(item.baseTypeId) && (c.baseTypeIds.length !== 1 || !c.subTypeIds?.length || c.subTypeIds.includes(item.subTypeId));
     if (c.type === 'rarity') return c.rarities.includes(item.rarity);
     if (c.type === 'affix') { const found = affixes.filter(a => c.affixIds.includes(a.affixId ?? a.id) && compare(a.tier, c.comparison ?? 'MORE_OR_EQUAL', c.minTier)); return found.length >= c.minCount && compare(found.reduce((sum, a) => sum + a.tier, 0), c.combinedComparison ?? (c.minTotalTier ? 'MORE_OR_EQUAL' : 'ANY'), c.minTotalTier); }
     if (c.type === 'potential') return Number.isFinite(item.legendaryPotential) && item.legendaryPotential >= c.minLegendaryPotential && item.legendaryPotential <= c.maxLegendaryPotential;
@@ -345,19 +257,28 @@ export function evaluateValueItem(draft, item) {
   return { groupId: rule?.groupId ?? null, outcome: rule?.type ?? 'SHOW', rule: rule ?? null };
 }
 
-/** Every additional affix contributes its configured tier score; an empty slot contributes zero. */
-export function getEquipmentItemScore(draft, item) {
-  const { high, medium, scoring } = validateDraft(draft);
-  const affixes = [...(item.affixes ?? []), ...['sealedAffix', 'corruptedAffix', 'primordialAffix'].map(field => item[field]).filter(Boolean)];
-  const contributions = [];
-  for (const a of affixes) {
-    const id = a.affixId ?? a.id;
-    if (!isGearAffix(catalog.affixes[id])) continue;
-    const tier = number(a.tier, 1, 8, 'item.affix.tier', true);
-    const category = high.includes(id) ? 'high' : medium.includes(id) ? 'medium' : 'low';
-    const scoreUnits = Math.round(scoring[category][Math.min(tier, 7) - 1] * 100);
-    contributions.push({ id, tier, category, scoreUnits, score: scoreUnits / 100 });
-  }
-  const scoreUnits = contributions.reduce((sum, a) => sum + a.scoreUnits, 0);
-  return { scoreUnits, rawScore: scoreUnits / 100, percentage: scoreUnits / (Math.round(scoring.high[6] * 100) * 4) * 100, contributions };
+
+// Planner class indices are 0..4; item ClassRequirement uses bits 1,2,4,8,16.
+export const FILTER_CLASSES = Object.freeze([
+  { id: 0, bit: 1, name: label('野蛮人', 'Primalist') },
+  { id: 1, bit: 2, name: label('法师', 'Mage') },
+  { id: 2, bit: 4, name: label('哨卫', 'Sentinel') },
+  { id: 3, bit: 8, name: label('侍祭', 'Acolyte') },
+  { id: 4, bit: 16, name: label('游侠', 'Rogue') },
+]);
+export const FILTER_EQUIPMENT_TYPES = Object.freeze(GEAR_TYPES.map(id => catalog.types[id]));
+export const FILTER_IDOL_TYPES = Object.freeze(IDOL_TYPES.map(id => catalog.types[id]));
+export const FILTER_IDOL_BASES = Object.freeze(Object.values(catalog.bases).filter(base => IDOL_TYPES.includes(base.baseType) && !base.hideInFilter && !base.legacy).map(base => ({ ...base, key: `${base.baseType}:${base.subType}` })));
+export function getOtherClassIdolKeys(classId) {
+  const current = FILTER_CLASSES.find(c => c.id === classId);
+  return current ? FILTER_IDOL_BASES.filter(base => base.classRequirement && !(base.classRequirement & current.bit)).map(base => base.key) : [];
+}
+function validateExclusions(value) {
+  if (!value || typeof value !== 'object') fail('INVALID_FILTER_EXCLUSIONS', '隐藏类型选择无效', 'Invalid hidden-type selections');
+  const equipmentTypeIds = ids(value.equipmentTypeIds, catalog.types, 'excluded.equipmentTypeIds');
+  const idolTypeIds = ids(value.idolTypeIds, catalog.types, 'excluded.idolTypeIds');
+  if (equipmentTypeIds.some(id => !GEAR_TYPES.includes(id)) || idolTypeIds.some(id => !IDOL_TYPES.includes(id))) fail('INVALID_FILTER_EXCLUSIONS', '隐藏类型不属于装备或神像', 'Hidden type is outside equipment or idol types');
+  const validBases = new Set(FILTER_IDOL_BASES.map(base => base.key));
+  if (!Array.isArray(value.idolBaseKeys) || value.idolBaseKeys.some(key => typeof key !== 'string' || !validBases.has(key))) fail('INVALID_FILTER_EXCLUSIONS', '隐藏神像底材无效', 'Invalid hidden idol base');
+  return { equipmentTypeIds, idolTypeIds, idolBaseKeys: [...new Set(value.idolBaseKeys)] };
 }

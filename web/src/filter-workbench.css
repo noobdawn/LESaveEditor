@@ -36,7 +36,7 @@
 .filter-workbench .error-inline{border:1px solid #f0d4cf;border-radius:8px;background:#fbefed;color:#9d4035;padding:12px 15px;margin:16px 0;font-size:13px;overflow-wrap:anywhere}
 .filter-workbench .visually-hidden{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 
-.filter-workbench .filter-steps{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:0 auto 28px;scroll-margin-top:24px}
+.filter-workbench .filter-steps{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin:0 auto 28px;scroll-margin-top:24px}
 .filter-workbench .filter-steps button{display:flex;align-items:center;justify-content:center;gap:9px;min-height:44px;padding:5px 6px;border-radius:8px;background:transparent;color:#819087;text-align:left}
 .filter-workbench .filter-steps button:hover{background:#eaf1ec;color:var(--green)}
 .filter-workbench .filter-steps button span{display:flex;align-items:center;justify-content:center;flex-shrink:0;width:29px;height:29px;border:1px solid #d9e1dc;border-radius:50%;font-size:12px;line-height:1;color:inherit}
@@ -129,33 +129,9 @@
 .filter-workbench .filter-loot-preview{background:#101714;color:var(--loot-color);border-radius:6px;text-align:center;padding:12px 8px;font-size:13px;line-height:1.65;overflow-wrap:anywhere}
 .filter-workbench .filter-loot-preview.emphasized{font-size:16px;font-weight:700;box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--loot-color),transparent 55%);text-shadow:0 0 10px color-mix(in srgb,var(--loot-color),transparent 65%)}
 .filter-workbench .filter-group-card.is-hidden{background:#f9fbfa}
-.filter-workbench .filter-equipment-toolbar{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:20px 24px 16px}
-.filter-workbench .filter-score-details{padding:0 24px 18px;border-bottom:1px solid var(--line);min-width:0}
-.filter-workbench .filter-score-details>summary{font-size:13px;color:#4d6957;cursor:pointer}
-.filter-workbench .filter-score-details>p{font-size:12px;color:var(--muted);line-height:1.8;margin:12px 0}
-.filter-workbench .filter-score-details>p:last-child{margin-bottom:0}
-.filter-workbench .filter-score-toolbar{display:flex;justify-content:space-between;align-items:center;gap:16px;margin:16px 0 10px;color:var(--muted);font-size:12px}
-.filter-workbench .filter-score-table-wrap{overflow-x:auto;max-width:100%;border:1px solid var(--line);border-radius:8px}
-.filter-workbench .filter-score-table{width:100%;min-width:620px;border-collapse:collapse;table-layout:fixed;background:#fff}
-.filter-workbench .filter-score-table th{font-size:13px;font-weight:500;color:#42554a;padding:10px 8px;background:#f6f9f7;text-align:center}
-.filter-workbench .filter-score-table th:first-child{width:76px;text-align:left;padding-left:12px}
-.filter-workbench .filter-score-table td{padding:7px 5px;border-top:1px solid var(--line)}
-.filter-workbench .filter-score-table tbody th{border-top:1px solid var(--line)}
-.filter-workbench .filter-score-table .text-input{padding:8px 6px;font-size:15px;text-align:center;font-variant-numeric:tabular-nums}
-.filter-workbench .filter-score-details .error-inline{font-size:13px;line-height:1.6}
-.filter-workbench .filter-score-heading{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:16px}
-.filter-workbench .filter-score-name{margin-bottom:18px}
-.filter-workbench .filter-score-field{display:block;margin:0;color:#42554a;font-size:13px}
-.filter-workbench .filter-threshold-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:8px}
-.filter-workbench .filter-threshold-entry{display:flex;align-items:center;gap:8px;color:var(--green);font-variant-numeric:tabular-nums}
-.filter-workbench .filter-threshold-entry .text-input{width:84px;padding:8px 10px;text-align:right}
-.filter-workbench .filter-threshold-entry output{white-space:nowrap;font-weight:500}
-.filter-workbench .filter-score-slider[type=range]{display:block;width:100%;min-width:0;height:26px;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none;appearance:auto;accent-color:var(--green);cursor:pointer}
-.filter-workbench .filter-group-copy>.filter-score-example{font-size:12px;line-height:1.7;margin-top:7px}
 .filter-workbench .filter-group-card.is-disabled{background:#f7f9f7}
 .filter-workbench .filter-export{margin-top:24px}
 .filter-workbench .filter-export #filter-name{max-width:600px}
-.filter-workbench .filter-approximation{padding:11px 14px;margin:16px 0 0;border:1px solid #e7e1cc;border-radius:8px;background:#faf8ef;color:#756c48;font-size:13px;line-height:1.7}
 .filter-workbench .filter-download-row{display:flex;align-items:center;justify-content:space-between;gap:24px;margin-top:24px}
 .filter-workbench .filter-download-row p{max-width:600px;margin:0}
 .filter-workbench .filter-download-row button{white-space:nowrap;flex-shrink:0}
@@ -174,8 +150,6 @@
 .filter-workbench .panel-head,.filter-workbench .panel-body{padding:20px}
 .filter-workbench .filter-pool-toolbar{align-items:flex-start;flex-direction:column;gap:12px}
 .filter-workbench .filter-group-card{padding:20px}
-.filter-workbench .filter-equipment-toolbar{padding:20px 20px 16px}
-.filter-workbench .filter-score-details{padding-right:20px;padding-left:20px}
 .filter-workbench .filter-group-controls{grid-template-columns:1fr 1fr}
 .filter-workbench .filter-download-row{flex-direction:column;align-items:stretch;gap:18px}
 .filter-workbench .filter-stage-actions{margin-top:26px}
@@ -189,3 +163,15 @@
 @media(prefers-reduced-motion:reduce){
 .filter-workbench .primary-button,.filter-workbench .outline-button{transition:none}
 }
+.build-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px}.build-actions button{flex:1;justify-content:center;white-space:nowrap}
+.filter-workbench .text-button{color:var(--green);font-size:12px}
+.filter-workbench .filter-section-title{font-size:16px;margin:24px 0 16px}
+.filter-workbench .filter-type-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.filter-workbench .filter-type-choice{display:flex;gap:10px;align-items:flex-start;cursor:pointer;font-size:14px;line-height:1.7;min-width:0}
+.filter-workbench .filter-type-choice input{margin-top:4px}
+.filter-workbench .filter-idol-exclusions>summary{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:20px 24px;cursor:pointer}
+.filter-workbench .filter-idol-exclusions>summary label{display:flex;align-items:center;gap:10px;cursor:pointer}
+.filter-workbench .filter-idol-exclusions[open]>summary{border-bottom:1px solid var(--line)}
+@media(max-width:720px){.filter-workbench .filter-type-grid{grid-template-columns:1fr}.filter-workbench .filter-steps{grid-template-columns:repeat(5,minmax(0,1fr))}.filter-workbench .filter-steps button strong{font-size:11px}}
+
+.filter-workbench .filter-fallback-note{padding:0 24px 20px;margin:0}
