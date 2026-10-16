@@ -192,12 +192,32 @@ test('additional affix fields count as useful and unselected affixes never subtr
   }
 });
 
-test('native XML exclusions hide only selected types and precise class idol bases before all keep rules', () => {
-  const input = draft(); input.uniqueIds = [277];
-  input.exclusions.equipmentTypeIds = [21, 12];
+test('native XML resolves uniques and sets before exclusions, then ordinary equipment and idol needs', () => {
+  const input = draft(); input.uniqueIds = [277]; input.setIds = [79];
+  const ordinary = [
+    { ...gear([501, 6]), rarity: 'EXALTED' },
+    { ...gear([1, 6], [502, 1], [25, 1]), rarity: 'EXALTED' },
+    gear([501, 5], [502, 5]),
+    gear([501, 4], [502, 4], [1, 1]),
+  ];
+  const names = ['Core-affix exalted equipment', 'Useful-affix exalted equipment', 'Crafting candidates', 'Leveling equipment'];
+  const baseline = exportedFilter(input);
+  ordinary.forEach((item, index) => assert.equal(baseline.match(item).name, names[index]));
+  input.exclusions.equipmentTypeIds = [0, 7, 21, 12];
   input.exclusions.idolBaseKeys = ['30:4', '30:9', '30:14'];
   const filter = exportedFilter(input);
-  assert.equal(filter.match({ equipmentType: 'RING', uniqueId: 277, rarity: 'UNIQUE' }).action, 'HIDE');
+  const selectedUnique = { equipmentType: 'RING', uniqueId: 277, rarity: 'UNIQUE' };
+  assert.equal(filter.match(selectedUnique).name, 'Needed uniques');
+  assert.equal(filter.match(selectedUnique).action, 'SHOW');
+  for (const rarity of ['SET', 'LEGENDARY']) {
+    const match = filter.match({ equipmentType: 'ONE_HANDED_MACES', uniqueId: 79, rarity });
+    assert.equal(match.name, 'Valuable set items'); assert.equal(match.action, 'SHOW');
+  }
+  for (const item of ordinary) { assert.equal(filter.match(item).name, 'Hide selected types'); assert.equal(filter.match(item).action, 'HIDE'); }
+  for (const rarity of ['UNIQUE', 'SET', 'LEGENDARY']) assert.equal(filter.match({ equipmentType: 'RING', uniqueId: 65535, rarity }), undefined);
+  input.groups.unique_needed.show = false;
+  assert.equal(exportedFilter(input).match(selectedUnique).name, 'Needed uniques');
+  assert.equal(exportedFilter(input).match(selectedUnique).action, 'HIDE');
   for (const subtype of [4, 9, 14]) assert.equal(filter.match({ equipmentType: 'IDOL_1x3', subtype, rarity: 'RARE' }).action, 'HIDE');
   input.groups.idol_other.show = true;
   const visible = exportedFilter(input);

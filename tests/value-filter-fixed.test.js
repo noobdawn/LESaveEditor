@@ -62,15 +62,35 @@ test('H is included in U once and additional affix fields participate', () => {
   assert.equal(evaluateValueItem(d, item([[26, 4], [25, 3]], { sealedAffix: { id: 73, tier: 2 } })).groupId, 'equipment_leveling');
 });
 
-test('manual equipment exclusions win over core affixes, needed uniques, sets and other keep rules', () => {
-  const d = draft(); d.exclusions.equipmentTypeIds = [22, 12, 13];
-  const output = generateValueFilter(d);
-  assert.equal(output.rules[0].groupId, 'excluded');
+test('type exclusions follow unique and set groups and override all four ordinary equipment categories', () => {
+  const d = draft();
+  const ordinary = [
+    [item([[26, 7]]), 'equipment_core'],
+    [item([[73, 6], [25, 2], [22, 1]]), 'equipment_useful'],
+    [item([[26, 5], [25, 5]], { rarity: 'RARE' }), 'equipment_crafting'],
+    [item([[26, 4], [25, 3], [73, 2]], { rarity: 'RARE' }), 'equipment_leveling'],
+  ];
+  for (const [candidate, groupId] of ordinary) assert.equal(evaluateValueItem(d, candidate).groupId, groupId);
+  d.exclusions.equipmentTypeIds = [22, 12, 13, 0, 7, 21];
+  const output = generateValueFilter(d), excluded = output.rules.findIndex(r => r.groupId === 'excluded');
+  assert.ok(output.rules.filter(r => /^(unique|set)_/.test(r.groupId)).every(r => r.order < excluded));
+  assert.ok(output.rules.filter(r => /^equipment_/.test(r.groupId)).every(r => r.order > excluded));
   assert.equal(output.rules.filter(r => r.id === 'excluded-types').length, 1);
-  assert.equal(evaluateValueItem(d, item([[26, 7]])).outcome, 'HIDE');
-  d.exclusions.equipmentTypeIds.push(0, 7);
-  assert.equal(evaluateValueItem(d, { baseTypeId: 0, uniqueId: 471, rarity: 'UNIQUE' }).outcome, 'HIDE');
+  for (const [candidate] of ordinary) {
+    const result = evaluateValueItem(d, candidate);
+    assert.equal(result.groupId, 'excluded'); assert.equal(result.outcome, 'HIDE');
+  }
+  assert.equal(evaluateValueItem(d, item([[26, 7]], { baseTypeId: 20 })).groupId, 'equipment_core');
+  assert.equal(evaluateValueItem(d, { baseTypeId: 0, uniqueId: 471, rarity: 'UNIQUE' }).groupId, 'unique_needed');
+  assert.equal(evaluateValueItem(d, { baseTypeId: 7, uniqueId: 79, rarity: 'SET' }).groupId, 'set_valuable');
+  assert.equal(evaluateValueItem(d, { baseTypeId: 7, uniqueId: 79, rarity: 'LEGENDARY' }).groupId, 'set_valuable');
+  d.uniqueIds = []; d.setIds = []; d.options.rareUniqueThreshold = 1;
+  assert.equal(evaluateValueItem(d, { baseTypeId: 21, uniqueId: 66, rarity: 'UNIQUE', legendaryPotential: 3 }).groupId, 'unique_high_lp');
+  assert.equal(evaluateValueItem(d, { baseTypeId: 21, uniqueId: 66, rarity: 'LEGENDARY', legendaryPotential: 0 }).groupId, 'unique_common');
+  assert.equal(evaluateValueItem(d, { baseTypeId: 7, uniqueId: 79, rarity: 'SET' }).groupId, 'set_common');
+  d.groups.set_common.show = false;
   assert.equal(evaluateValueItem(d, { baseTypeId: 7, uniqueId: 79, rarity: 'SET' }).outcome, 'HIDE');
+  for (const rarity of ['UNIQUE', 'SET', 'LEGENDARY']) assert.equal(evaluateValueItem(d, { baseTypeId: 21, uniqueId: 65535, rarity }).outcome, 'SHOW', 'type exclusions cannot hide unknown unique or set identities');
   for (const resourceKind of ['glyph', 'rune', 'shard', 'key']) assert.equal(evaluateValueItem(d, { resourceKind }).outcome, 'SHOW');
   assert.equal(evaluateValueItem(d, { baseTypeId: 41 }).outcome, 'SHOW');
 });
@@ -90,7 +110,7 @@ test('other-class idol selection uses item class bits and preserves Mage and gen
   for (const subTypeId of [1, 6, 11]) assert.equal(evaluateValueItem(d, { baseTypeId: 30, subTypeId, rarity: 'RARE' }).outcome, 'SHOW');
   const hides = generateValueFilter(d).rules.filter(r => r.groupId === 'excluded');
   assert.equal(hides.length, 5, 'all selected class bases share one rule per idol shape');
-  for (const rule of hides) assert.equal(rule.conditions[0].baseTypeIds.length, 1);
+  for (const rule of hides) assert.equal(rule.conditions.find(c => c.type === 'subtype').baseTypeIds.length, 1);
   d.exclusions.idolTypeIds = [30];
   const output = generateValueFilter(d);
   assert.ok(!output.rules.some(r => r.id === 'excluded-idols-30'), 'whole-shape exclusion subsumes its selected bases');
@@ -102,11 +122,13 @@ test('XML preserves native order, multi-type scope, exact idol subtypes and four
   const output = generateValueFilter(d);
   const xmlRules = [...output.xml.matchAll(/<Rule>([\s\S]*?)<\/Rule>/g)].map(match => match[1]).reverse();
   assert.equal(xmlRules.length, output.rules.length);
-  assert.match(xmlRules[0], /<type>HIDE<\/type>/);
-  assert.match(xmlRules[0], /<EquipmentType>TWO_HANDED_AXE<\/EquipmentType><EquipmentType>TWO_HANDED_MACE<\/EquipmentType>/);
-  assert.match(xmlRules[1], /<EquipmentType>IDOL_1x3<\/EquipmentType>/);
-  assert.match(xmlRules[1], /<subTypes><int>4<\/int><int>9<\/int><int>14<\/int><\/subTypes>/);
-  assert.equal((xmlRules[1].match(/<EquipmentType>/g) ?? []).length, 1);
+  const hiddenIndex = output.rules.findIndex(rule => rule.groupId === 'excluded');
+  assert.ok(hiddenIndex > 0);
+  assert.match(xmlRules[hiddenIndex], /<type>HIDE<\/type>/);
+  assert.match(xmlRules[hiddenIndex], /<EquipmentType>TWO_HANDED_AXE<\/EquipmentType><EquipmentType>TWO_HANDED_MACE<\/EquipmentType>/);
+  assert.match(xmlRules[hiddenIndex + 1], /<EquipmentType>IDOL_1x3<\/EquipmentType>/);
+  assert.match(xmlRules[hiddenIndex + 1], /<subTypes><int>4<\/int><int>9<\/int><int>14<\/int><\/subTypes>/);
+  assert.equal((xmlRules[hiddenIndex + 1].match(/<EquipmentType>/g) ?? []).length, 1);
   for (const name of ['核心词缀崇高装备', '有效词缀崇高装备', '考虑打造装备', '开荒过渡装备']) assert.equal(xmlRules.filter(rule => rule.includes(`<nameOverride>${name}</nameOverride>`)).length, 1);
   assert.doesNotMatch(output.xml, /评分|近似|equipment_score|__equipment_fallback__/);
   assert.equal(output.rules.length <= 200, true);

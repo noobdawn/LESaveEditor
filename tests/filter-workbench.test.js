@@ -218,6 +218,7 @@ test('fixed categories have no score, threshold, add, delete or rename controls'
 
 test('hidden-types page changes equipment families and exact class idols and preserves them across navigation',()=>{
   const ui=workbench({step:4});
+  assert.match(ui.document.html,/暗金和套装先按各自分组处理/);
   ui.state.filterDraft.build.classId=1;ui.render();
   ui.click('[data-filter-exclude-family="twohand"]');
   assert.deepEqual(plain(ui.state.filterDraft.exclusions.equipmentTypeIds),[12,13,14,15,16]);
@@ -236,7 +237,10 @@ test('hidden-types page changes equipment families and exact class idols and pre
   assert.deepEqual(plain(ui.state.filterDraft.exclusions),before);
   ui.click('#filter-download');assert.equal(ui.downloads.length,1);
   const output=generateValueFilter(ui.state.filterDraft);
-  assert.equal(output.rules[0].type,'HIDE');assert.equal(output.rules[0].groupId,'excluded');
+  const excluded=output.rules.find(rule=>rule.groupId==='excluded');
+  assert.equal(excluded.type,'HIDE');
+  assert.ok(output.rules.filter(rule=>/^(unique|set)_/.test(rule.groupId)).every(rule=>rule.order<excluded.order));
+  assert.ok(output.rules.filter(rule=>/^equipment_/.test(rule.groupId)).every(rule=>rule.order>excluded.order));
   ui.click('[data-filter-step="4"]');ui.click('#filter-clear-exclusions');
   assert.deepEqual(plain(ui.state.filterDraft.exclusions),{equipmentTypeIds:[],idolTypeIds:[],idolBaseKeys:[]});
 });

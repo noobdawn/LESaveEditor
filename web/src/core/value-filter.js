@@ -168,8 +168,18 @@ export function generateValueFilter(draft) {
     const style = styles[groupId]; rules.push({ id: `${groupId}-${key}`, groupId, name: style.name === undefined ? definitions[groupId].name : style.name, description: definitions[groupId].description, type: style.show ? 'SHOW' : 'HIDE', conditions, style: { color: style.color, emphasized: style.emphasized }, order: rules.length });
   };
   const equipment = [rarity(ORDINARY_RARITIES), subtype(GEAR_TYPES)];
+  // Unique and set groups resolve before type exclusions, which precede ordinary equipment.
+  add('unique_needed', 'selected', [identities(uniqueIds)]);
+  const rareIds = (sets, threshold) => Object.values(catalog.uniques).filter(u => u.isSetItem === sets && !u.hideFromPlayers && u.canDropRandomly && u.rerollChance >= threshold).map(u => u.id);
+  add('unique_rare', 'random-pool', [identities(rareIds(false, options.rareUniqueThreshold))]);
+  const lpIds = Object.values(catalog.uniques).filter(u => !u.isSetItem && u.legendaryType === 0 && !u.hideFromPlayers).map(u => u.id);
+  add('unique_high_lp', 'lp2to4', [rarity(['UNIQUE', 'LEGENDARY']), identities(lpIds), { type: 'potential', minLegendaryPotential: 2, maxLegendaryPotential: 4 }]);
+  add('set_valuable', 'selected-or-rare', [identities(sorted([...setIds, ...rareIds(true, options.rareSetThreshold)]))]);
+  // Reforged sets can have LEGENDARY rarity, so identity (not just the rarity flag) separates sets.
+  add('unique_common', 'remaining', [identities(Object.values(catalog.uniques).filter(u => !u.isSetItem).map(u => u.id))]);
+  add('set_common', 'remaining', [identities(Object.values(catalog.uniques).filter(u => u.isSetItem).map(u => u.id))]);
   const excludedTypes = sorted([...exclusions.equipmentTypeIds, ...exclusions.idolTypeIds]);
-  const hide = (key, conditions) => rules.push({ id: `excluded-${key}`, groupId: 'excluded', name: label('隐藏所选类型', 'Hide selected types'), type: 'HIDE', conditions, style: { color: 0, emphasized: false } });
+  const hide = (key, conditions) => rules.push({ id: `excluded-${key}`, groupId: 'excluded', name: label('隐藏所选类型', 'Hide selected types'), type: 'HIDE', conditions: [rarity(ORDINARY_RARITIES), ...conditions], style: { color: 0, emphasized: false } });
   if (excludedTypes.length) hide('types', [subtype(excludedTypes)]);
   for (const type of IDOL_TYPES) {
     if (exclusions.idolTypeIds.includes(type)) continue;
@@ -177,7 +187,6 @@ export function generateValueFilter(draft) {
     // Native subTypes are respected only when exactly one EquipmentType is selected.
     if (subTypeIds.length) hide(`idols-${type}`, [{ type: 'subtype', baseTypeIds: [type], subTypeIds }]);
   }
-  add('unique_needed', 'selected', [identities(uniqueIds)]);
   add('equipment_core', 'fixed', [rarity(['EXALTED']), subtype(GEAR_TYPES), affix(high, 6)]);
   add('equipment_useful', 'fixed', [rarity(['EXALTED']), subtype(GEAR_TYPES), affix(useful, 6), affix(useful, 1, 3)]);
   add('equipment_crafting', 'fixed', [...equipment, affix(high, 5), affix(useful, 5, 2)]);
@@ -188,14 +197,6 @@ export function generateValueFilter(draft) {
     add('idol_double', `shape${baseTypeId}`, [...scope, affix(selected.filter(id => catalog.affixes[id].type === 0)), affix(selected.filter(id => catalog.affixes[id].type === 1))]);
     add('idol_single', `shape${baseTypeId}`, [...scope, affix(selected)]);
   }
-  const rareIds = (sets, threshold) => Object.values(catalog.uniques).filter(u => u.isSetItem === sets && !u.hideFromPlayers && u.canDropRandomly && u.rerollChance >= threshold).map(u => u.id);
-  add('unique_rare', 'random-pool', [identities(rareIds(false, options.rareUniqueThreshold))]);
-  const lpIds = Object.values(catalog.uniques).filter(u => !u.isSetItem && u.legendaryType === 0 && !u.hideFromPlayers).map(u => u.id);
-  add('unique_high_lp', 'lp2to4', [rarity(['UNIQUE', 'LEGENDARY']), identities(lpIds), { type: 'potential', minLegendaryPotential: 2, maxLegendaryPotential: 4 }]);
-  add('set_valuable', 'selected-or-rare', [identities(sorted([...setIds, ...rareIds(true, options.rareSetThreshold)]))]);
-  // Reforged sets can have LEGENDARY rarity, so identity (not just the rarity flag) separates sets.
-  add('unique_common', 'remaining', [identities(Object.values(catalog.uniques).filter(u => !u.isSetItem).map(u => u.id))]);
-  add('set_common', 'remaining', [identities(Object.values(catalog.uniques).filter(u => u.isSetItem).map(u => u.id))]);
   add('idol_other', 'remaining', [rarity(ORDINARY_RARITIES), subtype(IDOL_TYPES)]);
   for (const kind of ['glyph', 'rune', 'shard', 'key']) add(kind, 'all', [{ type: 'resource', kind }]);
   add('altar', 'all', [subtype([41])]);
