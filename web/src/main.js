@@ -5,6 +5,7 @@ import { createWorkflow, SYNC_OPTIONS } from './core/workflow.js';
 import { summarizeBuild } from './core/planner.js';
 import { getTimelines, getFactions, factionRankInfo, expectedStashName, worldData } from './core/world.js';
 import { getEquipment } from './core/equipment.js';
+import { campaignSummary, campaignData } from './core/campaign.js';
 import plannerData from './data/planner-game-data.js';
 
 const flow = createWorkflow(), state = flow.state;
@@ -41,7 +42,7 @@ function linkPage() {
   return `<section class="page entry"><h1>${t('linkTitle')}</h1><p class="intro">${t('linkHint')}</p><form id="build-form" class="card"><label for="build-url">${t('linkLabel')}</label><input id="build-url" type="text" inputmode="url" placeholder="https://www.lastepochtools.com/planner/…" value="${esc(state.buildUrl)}" required autocomplete="off" spellcheck="false" ${state.loading ? 'disabled' : ''}>${notice()}<button class="button primary full" ${state.loading ? 'disabled' : ''}>${t(state.loading ? 'loading' : 'next')}${state.loading ? '<span class="spinner" aria-hidden="true"></span>' : icon('arrow')}</button></form><button class="text-link tutorial-link" id="tutorial-link">${t('ownSave')}</button></section>`;
 }
 function syncPage() {
-  return `<section class="page"><h1>${t('syncTitle')}</h1>${buildSummary()}<div class="card"><div class="sync-grid">${SYNC_OPTIONS.map(key => `<label class="sync-option"><input type="checkbox" data-sync="${key}" ${state.options[key] ? 'checked' : ''}><span><strong>${t(key)}</strong><small>${t(key+'Hint')}</small></span></label>`).join('')}</div><label class="max-roll-option"><span><strong>${t('maxRolls')}</strong><small>${t('maxRollsHint')}</small></span><input type="checkbox" role="switch" data-sync="maxRolls" ${state.options.maxRolls ? 'checked' : ''}></label></div><p class="hint">${t('replaceHint')}</p>${notice()}${actions()}</section>`;
+  return `<section class="page"><h1>${t('syncTitle')}</h1>${buildSummary()}<div class="card"><div class="sync-grid">${SYNC_OPTIONS.map(key => `<label class="sync-option"><input type="checkbox" data-sync="${key}" ${state.options[key] ? 'checked' : ''}><span><strong>${t(key)}</strong><small>${t(key+'Hint')}</small></span></label>`).join('')}</div><label class="max-roll-option"><span><strong>${t('maxRolls')}</strong><small>${t('maxRollsHint')}</small></span><input type="checkbox" role="switch" data-sync="maxRolls" ${state.options.maxRolls ? 'checked' : ''}></label><div class="max-roll-option campaign-option"><div class="campaign-copy"><div class="option-heading"><label for="campaign-skip"><strong>${t('campaignSkip')}</strong></label><span class="hint-trigger"><button type="button" class="hint-button" aria-label="${t('campaignSkipInfo')}" aria-describedby="campaign-skip-hint">!</button><span role="tooltip" id="campaign-skip-hint">${t('campaignSkipHint')}</span></span></div><small id="campaign-skip-description">${t('campaignSkipDescription')}</small></div><input id="campaign-skip" type="checkbox" role="switch" data-sync="campaignSkip" aria-describedby="campaign-skip-description" ${state.options.campaignSkip ? 'checked' : ''}></div></div><p class="hint">${t('replaceHint')}</p>${notice()}${actions()}</section>`;
 }
 function uploadPage() {
   const entries = [...state.files.values()];
@@ -54,7 +55,7 @@ function timelineEditor() {
   const timelines = getTimelines(character());
   const selected = timelines.find(run => run.index === view.timeline) ?? timelines[0];
   view.timeline = selected?.index ?? null;
-  if (!selected) return `<section class="card world-card"><h2>${t('timelineTitle')}</h2><p class="hint">${t('timelineEmpty')}</p></section>`;
+  if (!selected) return `<section class="card world-card"><h2>${t('timelineTitle')}</h2><p class="hint">${t(state.options.campaignSkip ? 'campaignTimelineEmpty' : 'timelineEmpty')}</p></section>`;
   return `<section class="card world-card"><h2>${t('timelineTitle')}</h2><label for="timeline-select">${t('timelineSelect')}</label><select id="timeline-select">${timelines.map(run => `<option value="${run.index}" ${run.index === selected.index ? 'selected' : ''}>${esc(timelineLabel(run))}</option>`).join('')}</select><div class="field-grid">${['stability','corruption'].map(field => {
     const value = draft(`timeline:${selected.index}:${field}`, selected[field]);
     const min = field === 'stability' ? 0 : selected.minCorruption;
@@ -81,7 +82,18 @@ function reviewRows(entry) {
   const push = (label, a, b, note = '', group = 'general') => rows.push({label, before:a, after:b, note, group});
   for (const change of entry.changes) {
     const path = change.path, root = path[0];
-    if (['savedItems','savedCharacterTree','savedSkillTrees','abilityBar'].includes(root)) {
+    if (['savedQuests','unlockedWaypointScenes','portalUnlocked','focusedQuest','lastVisitedTownScene'].includes(root) && state.options.campaignSkip) {
+      if (handled.has('campaign')) continue;
+      handled.add('campaign');
+      const a = campaignSummary(before), b = campaignSummary(after);
+      if (a.completedQuests !== b.completedQuests) push(t('campaignQuests'), `${a.completedQuests} / ${a.totalQuests}`, `${b.completedQuests} / ${b.totalQuests}`);
+      if (a.waypoints !== b.waypoints) push(t('campaignWaypoints'), `${a.waypoints} / ${a.totalWaypoints}`, `${b.waypoints} / ${b.totalWaypoints}`);
+      if (a.passiveRewards !== b.passiveRewards) push(t('campaignPassiveRewards'), a.passiveRewards, b.passiveRewards);
+      if (a.idolUnlocks !== b.idolUnlocks) push(t('campaignIdolRewards'), `${a.idolUnlocks} / ${campaignData.maximumIdolUnlocks}`, `${b.idolUnlocks} / ${campaignData.maximumIdolUnlocks}`);
+      if (before.lastVisitedTownScene !== after.lastVisitedTownScene) push(t('campaignSpawn'), before.lastVisitedTownScene === campaignData.spawnScene ? t('monolithHub') : before.lastVisitedTownScene || t('empty'), t('monolithHub'));
+      if (before.focusedQuest !== after.focusedQuest && number(before.focusedQuest) !== number(after.focusedQuest)) push(t('campaignTrackedQuest'), before.focusedQuest, t('empty'));
+      if (before.portalUnlocked !== after.portalUnlocked) push(t('campaignPortal'), t(before.portalUnlocked ? 'unlocked' : 'locked'), t('unlocked'));
+    } else if (['savedItems','savedCharacterTree','savedSkillTrees','abilityBar'].includes(root)) {
       if (handled.has(root)) continue;
       handled.add(root);
       if (root === 'savedItems') {

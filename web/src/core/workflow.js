@@ -1,5 +1,6 @@
 import { parseSave, serializeSave, diffSave } from './save.js';
 import { fetchPlannerBuild, applyPlannerBuild } from './planner.js';
+import { applyCampaignSkip } from './campaign.js';
 import { applyWorldEdits, validateCompanion, WorldError } from './world.js';
 
 export const SYNC_OPTIONS = ['equipment', 'idols', 'blessings', 'passives', 'skills', 'skillBar'];
@@ -19,7 +20,7 @@ function validateFiles(files, requireCharacter = false) {
 /** A five-step session. Originals are immutable; every synchronization starts from them. */
 export function createWorkflow({ fetchBuild = fetchPlannerBuild } = {}) {
   const state = { step: 0, build: null, buildUrl: '', loading: false, readingFiles: false, error: null,
-    options: { ...Object.fromEntries(SYNC_OPTIONS.map(key => [key, true])), maxRolls: false },
+    options: { ...Object.fromEntries(SYNC_OPTIONS.map(key => [key, true])), maxRolls: false, campaignSkip: false },
     files: new Map(), synced: [], result: [], warnings: [], worldEdits: new Map(), acknowledged: false,
   };
   let request;
@@ -44,7 +45,7 @@ export function createWorkflow({ fetchBuild = fetchPlannerBuild } = {}) {
       }
     },
     setOption(key, value) {
-      if (![...SYNC_OPTIONS, 'maxRolls'].includes(key) || typeof value !== 'boolean') return;
+      if (![...SYNC_OPTIONS, 'maxRolls', 'campaignSkip'].includes(key) || typeof value !== 'boolean') return;
       state.options[key] = value; invalidate(); state.error = null;
     },
     async addFiles(incoming) {
@@ -78,7 +79,9 @@ export function createWorkflow({ fetchBuild = fetchPlannerBuild } = {}) {
         const { character } = validateFiles(state.files, true);
         // These three character settings are mandatory in this workflow.
         const options = { ...state.options, class: true, level: true, weaverTree: false };
-        const applied = applyPlannerBuild(character.data, state.build, options);
+        // Quest rewards must exist before the planner validates its passive budget.
+        const input = options.campaignSkip ? applyCampaignSkip(character.data).data : character.data;
+        const applied = applyPlannerBuild(input, state.build, options);
         state.synced = [...state.files.values()].map(({ original }) => original.name === character.name ? { ...original, data: applied.data } : original);
         state.warnings = applied.warnings; state.result = []; state.acknowledged = false; state.step = 3;
         return true;
