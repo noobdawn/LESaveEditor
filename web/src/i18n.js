@@ -1,5 +1,6 @@
 export const messages = {
   zh: {
+    syncRoute: '离线存档同步', filterRoute: '构造过滤器', returnToLink: '返回配装链接',
     steps: ['配装链接', '配装同步', '上传存档', '世界编辑', '修改预览'], next: '下一步', back: '上一步', loading: '正在读取…', close: '关闭', remove: '移除',
     linkTitle: '输入配装链接', linkLabel: 'LastEpochTools 模拟器 URL', linkHint: '在模拟器中点击“保存／分享”，然后将链接粘贴到这里。', ownSave: '我想修改自己的存档怎么办？', openPlanner: '打开 LastEpochTools',
     tutorialTitle: '修改自己的存档', tutorialSteps: ['在 LastEpochTools 点击“导入”，选择你的离线角色存档。','调整装备、天赋和技能，点击“保存／分享”复制链接。','回到这里粘贴链接，继续同步到原角色存档。'], tutorialAlt: '将离线角色存档导入模拟器并生成分享链接的演示', tutorialDemo: '操作演示', replay: '重新播放',
@@ -19,6 +20,7 @@ export const messages = {
     warnings: '同步提示', characterClass: '职业', mastery: '专精', experience: '角色经验', passiveAllocation: '被动天赋分配', skillAllocation: '技能专精', harbingerProgress: '先兆进度', allocated: '已分配', unspent: '未分配', synchronized: '属性已同步', localOnly: '存档仅在浏览器中处理', version: '适配游戏 1.5.2.1', source: 'GitHub',
   },
   en: {
+    syncRoute: 'Sync offline save', filterRoute: 'Create loot filter', returnToLink: 'Back to build link',
     steps: ['Build URL', 'Build sync', 'Upload saves', 'World editor', 'Review'], next: 'Next', back: 'Back', loading: 'Loading…', close: 'Close', remove: 'Remove',
     linkTitle: 'Enter a build URL', linkLabel: 'LastEpochTools planner URL', linkHint: 'Choose Save / Share in the planner, then paste the link here.', ownSave: 'How do I edit my own save?', openPlanner: 'Open LastEpochTools',
     tutorialTitle: 'Edit your own save', tutorialSteps: ['Choose Import on LastEpochTools and select your offline character save.','Adjust equipment, passives and skills. Choose Save / Share and copy the URL.','Paste the URL here to apply the changes to the original character save.'], tutorialAlt: 'Demonstration of importing an offline character into the planner and creating a share URL', tutorialDemo: 'Demonstration', replay: 'Replay',

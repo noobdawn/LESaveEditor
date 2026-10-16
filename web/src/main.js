@@ -7,12 +7,15 @@ import { getTimelines, getFactions, factionRankInfo, expectedStashName, worldDat
 import { getEquipment } from './core/equipment.js';
 import { campaignSummary, campaignData } from './core/campaign.js';
 import plannerData from './data/planner-game-data.js';
+import { createValueFilterDraft as createFilterDraft } from './core/value-filter.js';
+import { renderFilterWorkbench, bindFilterWorkbench } from './filter-workbench.js';
 
 const flow = createWorkflow(), state = flow.state;
 const app = document.querySelector('#app');
 let language = 'zh';
 try { if (localStorage.getItem('le-save-editor-language') === 'en') language = 'en'; } catch { /* Optional preference storage. */ }
-const view = { timeline: null, faction: null, tutorial: false, notice: '', downloaded: false, downloadedFiles: new Set() };
+const filterView = { tab: 'filterTab', filterDraft: null, filterStep: 1, filterSelected: null, filterUi: null, filterDirty: false, build: null, language: 'zh' };
+const view = { mode: 'sync', loadedBuildUrl: '', timeline: null, faction: null, tutorial: false, notice: '', downloaded: false, downloadedFiles: new Set() };
 const t = key => messages[language][key];
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
 const localized = value => value?.[language] ?? value?.en ?? value ?? '';
@@ -39,7 +42,7 @@ function buildSummary() {
   return `<div class="build-summary"><div><strong>${esc(className(summary.classId, summary.masteryId))}</strong><span>${t('level')} ${summary.level}</span></div><a href="${esc(state.build.sourceUrl)}" target="_blank" rel="noopener noreferrer">${t('viewBuild')}${icon('external')}</a></div>`;
 }
 function linkPage() {
-  return `<section class="page entry"><h1>${t('linkTitle')}</h1><p class="intro">${t('linkHint')}</p><form id="build-form" class="card"><label for="build-url">${t('linkLabel')}</label><input id="build-url" type="text" inputmode="url" placeholder="https://www.lastepochtools.com/planner/…" value="${esc(state.buildUrl)}" required autocomplete="off" spellcheck="false" ${state.loading ? 'disabled' : ''}>${notice()}<button class="button primary full" ${state.loading ? 'disabled' : ''}>${t(state.loading ? 'loading' : 'next')}${state.loading ? '<span class="spinner" aria-hidden="true"></span>' : icon('arrow')}</button></form><button class="text-link tutorial-link" id="tutorial-link">${t('ownSave')}</button></section>`;
+  return `<section class="page entry filter-route"><h1>${t('linkTitle')}</h1><p class="intro">${t('linkHint')}</p><form id="build-form" class="card"><label for="build-url">${t('linkLabel')}</label><input id="build-url" type="text" inputmode="url" placeholder="https://www.lastepochtools.com/planner/…" value="${esc(state.buildUrl)}" required autocomplete="off" spellcheck="false" ${state.loading ? 'disabled' : ''}>${notice()}<div class="filter-route-actions"><button type="submit" name="intent" value="sync" class="button primary full" ${state.loading ? 'disabled' : ''}>${t(state.loading ? 'loading' : 'syncRoute')}${state.loading ? '<span class="spinner" aria-hidden="true"></span>' : icon('arrow')}</button><button type="submit" name="intent" value="filter" class="button secondary full" ${state.loading ? 'disabled' : ''}>${t('filterRoute')}${icon('arrow')}</button></div></form><button class="text-link tutorial-link" id="tutorial-link">${t('ownSave')}</button></section>`;
 }
 function syncPage() {
   return `<section class="page"><h1>${t('syncTitle')}</h1>${buildSummary()}<div class="card"><div class="sync-grid">${SYNC_OPTIONS.map(key => `<label class="sync-option"><input type="checkbox" data-sync="${key}" ${state.options[key] ? 'checked' : ''}><span><strong>${t(key)}</strong><small>${t(key+'Hint')}</small></span></label>`).join('')}</div><label class="max-roll-option"><span><strong>${t('maxRolls')}</strong><small>${t('maxRollsHint')}</small></span><input type="checkbox" role="switch" data-sync="maxRolls" ${state.options.maxRolls ? 'checked' : ''}></label><div class="max-roll-option campaign-option"><div class="campaign-copy"><div class="option-heading"><label for="campaign-skip"><strong>${t('campaignSkip')}</strong></label><span class="hint-trigger"><button type="button" class="hint-button" aria-label="${t('campaignSkipInfo')}" aria-describedby="campaign-skip-hint">!</button><span role="tooltip" id="campaign-skip-hint">${t('campaignSkipHint')}</span></span></div><small id="campaign-skip-description">${t('campaignSkipDescription')}</small></div><input id="campaign-skip" type="checkbox" role="switch" data-sync="campaignSkip" aria-describedby="campaign-skip-description" ${state.options.campaignSkip ? 'checked' : ''}></div></div><p class="hint">${t('replaceHint')}</p>${notice()}${actions()}</section>`;
@@ -140,23 +143,53 @@ function reviewPage() {
 function tutorial() {
   return `<dialog id="tutorial-dialog" aria-labelledby="tutorial-title"><div class="dialog-head"><h2 id="tutorial-title">${t('tutorialTitle')}</h2><button class="icon-button" id="close-tutorial" aria-label="${t('close')}">${icon('close')}</button></div><ol>${t('tutorialSteps').map(step=>`<li>${esc(step)}</li>`).join('')}</ol><a class="text-link" href="${plannerUrl()}" target="_blank" rel="noopener noreferrer">${t('openPlanner')}${icon('external')}</a><div class="demo-head"><span>${t('tutorialDemo')}</span><button class="text-link" id="replay-tutorial">${t('replay')}</button></div><img id="tutorial-image" src="./tutorial/save-to-planner.gif" alt="${t('tutorialAlt')}" width="1513" height="1127"></dialog>`;
 }
+function filterPage() {
+  return `<section class="page filter-route"><div class="filter-route-heading"><h1>${t('filterRoute')}</h1><button class="button secondary" id="filter-back">${t('returnToLink')}</button></div>${buildSummary()}${notice()}${renderFilterWorkbench(filterView)}</section>`;
+}
+async function importSelectedBuild(url, mode = 'sync') {
+  const previous = state.step;
+  view.notice = ''; state.error = null;
+  if (state.build && !state.loading && url.trim() === view.loadedBuildUrl) {
+    if (mode === 'filter') {
+      if (!filterView.filterDraft) filterView.filterDraft = createFilterDraft(state.build);
+      filterView.build = state.build;
+    }
+    view.mode = mode; state.step = 1; renderStep(-1); return;
+  }
+  view.mode = 'sync';
+  const loading = flow.importBuild(url); render();
+  const success = await loading;
+  if (success) {
+    view.loadedBuildUrl = url.trim();
+    filterView.filterDraft = null; filterView.filterDirty = false; filterView.filterStep = 1; filterView.filterSelected = null; filterView.filterUi = null;
+    filterView.build = state.build;
+    try {
+      if (mode === 'filter') filterView.filterDraft = createFilterDraft(state.build);
+      view.mode = mode;
+    } catch (error) { state.error = error; state.step = 0; }
+  }
+  renderStep(previous);
+}
 function render() {
-  document.documentElement.lang=language==='zh'?'zh-CN':'en';document.title=`LE Save Editor · ${t('steps')[state.step]}`;
-  app.innerHTML=`<header class="site-header"><a class="brand" href="#" id="brand-link">LE Save Editor</a><div class="language-switch" role="group" aria-label="Language"><button data-language="zh" aria-pressed="${language==='zh'}">中文</button><button data-language="en" aria-pressed="${language==='en'}">English</button></div></header><nav class="stepper" aria-label="${language==='zh'?'操作步骤':'Steps'}">${t('steps').map((label,index)=>`<button data-step="${index}" ${index>=state.step||state.loading||state.readingFiles?'disabled':''} ${index===state.step?'aria-current="step"':''} class="${index<state.step?'complete':''}"><span class="step-index">${index<state.step?icon('check'):index+1}</span><span>${label}</span></button>`).join('')}</nav><main id="main-content" tabindex="-1">${[linkPage,syncPage,uploadPage,worldPage,reviewPage][state.step]()}</main><footer><span>${t('localOnly')}</span><span>${t('version')}<a href="https://github.com/noobdawn/LESaveEditor" target="_blank" rel="noopener noreferrer">${t('source')}</a></span></footer><input type="file" id="save-input" multiple hidden aria-label="${t('choose')}">${view.tutorial?tutorial():''}`;
+  filterView.language=language;
+  document.documentElement.lang=language==='zh'?'zh-CN':'en';document.title=`LE Save Editor · ${view.mode==='filter'?t('filterRoute'):t('steps')[state.step]}`;
+  app.innerHTML=`<header class="site-header"><a class="brand" href="#" id="brand-link">LE Save Editor</a><div class="language-switch" role="group" aria-label="Language"><button data-language="zh" aria-pressed="${language==='zh'}">中文</button><button data-language="en" aria-pressed="${language==='en'}">English</button></div></header>${view.mode==='filter'?'':`<nav class="stepper" aria-label="${language==='zh'?'操作步骤':'Steps'}">${t('steps').map((label,index)=>`<button data-step="${index}" ${index>=state.step||state.loading||state.readingFiles?'disabled':''} ${index===state.step?'aria-current="step"':''} class="${index<state.step?'complete':''}"><span class="step-index">${index<state.step?icon('check'):index+1}</span><span>${label}</span></button>`).join('')}</nav>`}<main id="main-content" tabindex="-1">${view.mode==='filter'?filterPage():[linkPage,syncPage,uploadPage,worldPage,reviewPage][state.step]()}</main><footer><span>${t('localOnly')}</span><span>${t('version')}<a href="https://github.com/noobdawn/LESaveEditor" target="_blank" rel="noopener noreferrer">${t('source')}</a></span></footer><input type="file" id="save-input" multiple hidden aria-label="${t('choose')}">${view.tutorial?tutorial():''}`;
   bindEvents();if(view.tutorial)document.querySelector('#tutorial-dialog').showModal();
 }
 function renderStep(previous) { render();if(previous!==state.step){window.scrollTo(0,0);document.querySelector('#main-content').focus({preventScroll:true});} }
-function downloadFile(file) {
-  const url=URL.createObjectURL(new Blob([file.text],{type:'application/octet-stream'}));
+function downloadFile(file, mime = 'application/octet-stream') {
+  const url=URL.createObjectURL(new Blob([file.text],{type:mime}));
   const anchor=document.createElement('a');anchor.href=url;anchor.download=file.name;document.body.append(anchor);anchor.click();anchor.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);
 }
 async function loadFiles(files) { const loading=flow.addFiles(files);render();await loading;view.downloaded=false;render(); }
 function bindEvents() {
   document.querySelectorAll('[data-language]').forEach(button=>button.onclick=()=>{language=button.dataset.language;try{localStorage.setItem('le-save-editor-language',language);}catch{}view.notice='';render();});
-  document.querySelector('#brand-link').onclick=event=>{event.preventDefault();const previous=state.step;flow.goBack(0);renderStep(previous);};
+  document.querySelector('#brand-link').onclick=event=>{event.preventDefault();if(state.loading||state.readingFiles)return;const previous=state.step;view.mode='sync';flow.goBack(0);renderStep(previous);};
   document.querySelectorAll('[data-step]').forEach(button=>button.onclick=()=>{const previous=state.step;flow.goBack(Number(button.dataset.step));renderStep(previous);});
   document.querySelector('#back-button')?.addEventListener('click',()=>{const previous=state.step;flow.goBack();view.notice='';renderStep(previous);});
-  document.querySelector('#build-form')?.addEventListener('submit',async event=>{event.preventDefault();const url=document.querySelector('#build-url').value,previous=state.step;const loading=flow.importBuild(url);render();await loading;renderStep(previous);});
+  document.querySelector('#build-form')?.addEventListener('submit',event=>{event.preventDefault();importSelectedBuild(document.querySelector('#build-url').value,event.submitter?.value||'sync');});
+  document.querySelector('#filter-back')?.addEventListener('click',()=>{view.mode='sync';flow.goBack(0);view.notice='';renderStep(-1);});
+  if(view.mode==='filter') bindFilterWorkbench(filterView,{render,notify:(message,error=false)=>{if(error)state.error=new Error(message);else{state.error=null;view.notice=message;}render();},downloadFile:(text,name,mime)=>downloadFile({text,name},mime)});
   document.querySelector('#build-url')?.addEventListener('input',event=>{state.buildUrl=event.target.value;});
   document.querySelectorAll('[data-sync]').forEach(input=>input.onchange=()=>flow.setOption(input.dataset.sync,input.checked));
   document.querySelector('#next-button')?.addEventListener('click',()=>{const previous=state.step;view.notice='';view.downloaded=false;view.downloadedFiles.clear();if(state.step===1)state.step=2;else if(state.step===2)flow.synchronize();else if(state.step===3)flow.prepareReview();renderStep(previous);});
@@ -180,7 +213,7 @@ function bindEvents() {
   const dialog=document.querySelector('#tutorial-dialog');
   if(dialog){const close=()=>{view.tutorial=false;render();document.querySelector('#tutorial-link')?.focus();};document.querySelector('#close-tutorial').onclick=close;dialog.addEventListener('cancel',event=>{event.preventDefault();close();});dialog.addEventListener('click',event=>{if(event.target===dialog){const rect=dialog.getBoundingClientRect();if(event.clientX<rect.left||event.clientX>rect.right||event.clientY<rect.top||event.clientY>rect.bottom)close();}});document.querySelector('#replay-tutorial').onclick=()=>{document.querySelector('#tutorial-image').src=`./tutorial/save-to-planner.gif?replay=${Date.now()}`;};}
 }
-window.addEventListener('beforeunload',event=>{if(state.files.size&&!(state.step===4&&view.downloaded&&state.acknowledged)){event.preventDefault();event.returnValue='';}});
+window.addEventListener('beforeunload',event=>{if(filterView.filterDirty || state.files.size&&!(state.step===4&&view.downloaded&&state.acknowledged)){event.preventDefault();event.returnValue='';}});
 window.addEventListener('dragover',event=>{if(event.dataTransfer?.types.includes('Files'))event.preventDefault();});
 window.addEventListener('drop',event=>event.preventDefault());
 render();

@@ -4,6 +4,7 @@ import LZString from 'lz-string';
 import catalog from '../web/src/core/game-item-data.json' with { type: 'json' };
 import { decodeSavedItem, encodePlannerItem } from '../web/src/core/items.js';
 import { saveToPlannerBuild } from '../web/src/core/reverse-planner.js';
+import { createValueFilterDraft } from '../web/src/core/value-filter.js';
 
 const aliases = ['affixes', 'sealedAffix', 'primordialAffix', 'corruptedAffix'];
 const uniques = Object.entries(catalog.uniques).map(([id, definition]) => ({ id: Number(id), ...definition }));
@@ -26,6 +27,9 @@ function aliasRecord(unique, id, tier, alias) {
   if (alias === 'affixes') record.affixes.unshift(selected);
   else record[alias] = selected;
   return record;
+}
+function buildFor(record, idol = false) {
+  return { dataVersion: 'Version 1.5.2.1', data: { bio: { level: 100, characterClass: 0, chosenMastery: 1 }, equipment: idol ? {} : { ring1: record }, idols: idol ? [{ ...record, x: 1, y: 4 }] : [], charTree: {}, skillTrees: [] } };
 }
 function saveFor(item) {
   return { level: 100, characterClass: 0, chosenMastery: 1, savedItems: [item], savedCharacterTree: { treeID: '', version: 4, nodeIDs: [], nodePoints: [], unspentPoints: 113 }, savedSkillTrees: [], abilityBar: ['', '', '', '', ''] };
@@ -60,6 +64,8 @@ test('all 489 unique identities keep inherent ir/ur separate; unsupported mechan
       assert.deepEqual(decoded.implicitRolls, ir);
       assert.deepEqual(decoded.uniqueRolls, ur);
       assert.deepEqual(tuples(decoded), recordTuples(record), `unique ${unique.id}: inherent roll bytes cannot become affixes`);
+      const draft = createValueFilterDraft(buildFor(record));
+      assert.deepEqual(draft.highAffixIds, [], `unique ${unique.id}: neither ir/ur nor fixed pools are additional build affixes`);
       supported++;
     }
     assert.deepEqual(record, before);
@@ -77,6 +83,10 @@ test('every owned fake modifier retains all catalog-supported tiers through ever
       assert.equal(decoded.affixes.length, unique.specificAffixCount);
       assert.deepEqual(tuples(decoded), recordTuples(record).map(([id, tier, roll]) => [id, tier, maxRolls ? 255 : roll]));
     }
+    const draft = createValueFilterDraft(buildFor(record, unique.baseType >= 25 && unique.baseType <= 33));
+    assert.equal(draft.analysis.hasUnresolvedTargets, false, `${unique.id}/${id}/T${tier}/${alias}`);
+    assert.deepEqual(draft.highAffixIds, []);
+    assert.equal(draft.analysis.targets[0].inherentAffixes.length, unique.specificAffixCount);
     assert.deepEqual(record, before);
     combinations++;
   }
@@ -121,9 +131,11 @@ test('Exulis pool membership is source-specific and never globally excludes vali
     const owned = { id: uniqueId(exulis), affixes: [affix(id, 5), affix(second, 5)] };
     const decoded = decodeSavedItem(encodePlannerItem(owned, { containerID: 11 }));
     assert.equal(decoded.rarity, 9, 'type 6 retains native legendary semantics rather than FakeUniqueMod semantics');
+    assert.deepEqual(createValueFilterDraft(buildFor(owned)).highAffixIds, []);
     const additional = { id: baseId(20), corruptedAffix: affix(id, 5) };
     const ordinary = decodeSavedItem(encodePlannerItem(additional, { containerID: 11 }));
     assert.deepEqual(tuples(ordinary), [[id, 5, 97]]);
+    assert.deepEqual(createValueFilterDraft(buildFor(additional)).highAffixIds, [id]);
   }
 });
 
@@ -154,5 +166,9 @@ test('a genuine T8 addition remains separate from an owned T8 fake modifier and 
   const decoded = decodeSavedItem(encodePlannerItem(record, { containerID: 10 }));
   assert.deepEqual(decoded.affixes.map(a => [a.affixId, a.tier]), [[501, 8], [1136, 8], [1027, 6]]);
   assert.equal(decoded.extraFlags, 128);
+  const draft = createValueFilterDraft(buildFor(record));
+  assert.equal(draft.analysis.hasUnresolvedTargets, false);
+  assert.deepEqual(draft.highAffixIds, [501, 1027]);
+  assert.deepEqual(draft.analysis.targets[0].inherentAffixes.map(a => a.id), [1136]);
   assert.throws(() => encodePlannerItem({ ...record, primordialAffix: affix(501, 7) }, { containerID: 10 }), { code: 'INVALID_PRIMORDIAL_AFFIX' });
 });
