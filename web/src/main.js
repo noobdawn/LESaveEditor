@@ -7,6 +7,7 @@ import { getTimelines, getFactions, factionRankInfo, expectedStashName, worldDat
 import { getEquipment } from './core/equipment.js';
 import { campaignSummary, campaignData } from './core/campaign.js';
 import { ENDGAME_RESOURCES, endgameResourceQuantity } from './core/endgame.js';
+import { getCharacterMode, modeStashName, currentStash } from './core/modes.js';
 import plannerData from './data/planner-game-data.js';
 import { createValueFilterDraft as createFilterDraft, restoreValueFilterDraft } from './core/value-filter.js';
 import { MAX_FILTER_XML_BYTES } from './core/filter-settings.js';
@@ -25,8 +26,8 @@ const number = value => Number(String(value ?? 0));
 const formatted = value => value !== '' && value != null && /^\d+$/.test(String(value)) && Number.isSafeInteger(Number(String(value))) ? Number(String(value)).toLocaleString(language === 'zh' ? 'zh-CN' : 'en-US') : String(value ?? '');
 const className = (classId, masteryId) => masteries[language][number(classId)]?.[number(masteryId)] ?? classes[language][number(classId)] ?? String(classId);
 const plannerUrl = () => `https://www.lastepochtools.com/planner/${language === 'zh' ? 'zh/' : ''}`;
-const character = () => state.synced.find(doc => doc.kind === 'character');
-const stash = () => state.synced.find(doc => doc.kind === 'stash');
+const character = () => flow.previewMode().documents.find(doc => doc.kind === 'character');
+const stash = () => currentStash(flow.previewMode().documents);
 const draft = (key, fallback) => state.worldEdits.get(key)?.value ?? fallback;
 function errorText(error) {
   if (language === 'en' && error.messageEn) return error.messageEn;
@@ -44,7 +45,7 @@ function buildSummary() {
   return `<div class="build-summary"><div><strong>${esc(className(summary.classId, summary.masteryId))}</strong><span>${t('level')} ${summary.level}</span></div><a href="${esc(state.build.sourceUrl)}" target="_blank" rel="noopener noreferrer">${t('viewBuild')}${icon('external')}</a></div>`;
 }
 function linkPage() {
-  return `<section class="page entry filter-route"><h1>${t('linkTitle')}</h1><p class="intro">${t('linkHint')}</p><form id="build-form" class="card"><label for="build-url">${t('linkLabel')}</label><input id="build-url" type="text" inputmode="url" placeholder="https://www.lastepochtools.com/planner/…" value="${esc(state.buildUrl)}" required autocomplete="off" spellcheck="false" ${state.loading || view.filterImporting ? 'disabled' : ''}>${notice()}<div class="filter-route-actions"><button type="submit" name="intent" value="sync" class="button primary full" ${state.loading || view.filterImporting ? 'disabled' : ''}>${t(state.loading ? 'loading' : 'syncRoute')}${state.loading ? '<span class="spinner" aria-hidden="true"></span>' : icon('arrow')}</button><button type="submit" name="intent" value="filter" class="button secondary full" ${state.loading || view.filterImporting ? 'disabled' : ''}>${t('filterRoute')}${icon('arrow')}</button></div></form>${filterImportCard()}<button class="text-link tutorial-link" id="tutorial-link">${t('ownSave')}</button></section>`;
+  return `<section class="page entry filter-route"><h1>${t('entryTitle')}</h1><form id="build-form" class="card"><label for="build-url">${t('linkLabel')}</label><input id="build-url" type="text" inputmode="url" placeholder="https://www.lastepochtools.com/planner/…" value="${esc(state.buildUrl)}" required autocomplete="off" spellcheck="false" ${state.loading || view.filterImporting ? 'disabled' : ''}>${notice()}<div class="filter-route-actions"><button type="submit" name="intent" value="sync" class="button primary full" ${state.loading || view.filterImporting ? 'disabled' : ''}>${t(state.loading ? 'loading' : 'syncRoute')}${state.loading ? '<span class="spinner" aria-hidden="true"></span>' : icon('arrow')}</button><button type="submit" name="intent" value="filter" class="button secondary full" ${state.loading || view.filterImporting ? 'disabled' : ''}>${t('filterRoute')}${icon('arrow')}</button></div></form>${filterImportCard()}${worldEntryCard()}<button class="text-link tutorial-link" id="tutorial-link">${t('ownSave')}</button></section>`;
 }
 function endgameSkipOption() {
   return `<div class="max-roll-option campaign-option endgame-option"><div class="campaign-copy"><div class="option-heading"><label for="endgame-skip"><strong>${t('endgameSkip')}</strong></label><span class="hint-trigger"><button type="button" class="hint-button" aria-label="${t('endgameSkip')}" aria-describedby="endgame-skip-hint">!</button><span role="tooltip" id="endgame-skip-hint">${t('endgameSkipHint')}</span></span></div><small id="endgame-skip-description">${t('endgameSkipDescription')}</small></div><input id="endgame-skip" type="checkbox" role="switch" data-sync="endgameSkip" aria-describedby="endgame-skip-description" ${state.options.endgameSkip ? 'checked' : ''} ${state.options.campaignSkip ? '' : 'disabled'}></div>`;
@@ -56,7 +57,7 @@ function uploadPage() {
   const entries = [...state.files.values()];
   const loadedCharacter = entries.find(entry => entry.original.kind === 'character')?.original;
   const expected = expectedStashName(loadedCharacter) ?? 'STASH_CYCLE_*';
-  return `<section class="page"><h1>${t('uploadTitle')}</h1><p class="intro">${t('uploadHint')}</p><div class="card"><div class="drop-area" id="drop-area">${icon('upload')}<strong>${t('drop')}</strong><button class="button secondary" data-choose ${state.readingFiles ? 'disabled' : ''}>${t(state.readingFiles ? 'readingFiles' : entries.length ? 'addFiles' : 'choose')}</button></div><p class="hint">${t(state.options.endgameSkip ? 'endgameUploadHint' : 'uploadKinds')}</p><div class="file-kinds"><div><span>${t('characterFile')} <small>${t('required')}</small></span><code>1CHARACTERSLOT_BETA_*</code></div><div><span>${t('stashFile')} <small>${t(state.options.endgameSkip ? 'required' : 'optional')}</small></span><code>${esc(expected)}</code></div></div>${entries.length ? `<ul class="file-list">${entries.map(({original}) => `<li>${icon('file')}<span><strong>${esc(original.kind === 'character' ? original.data.characterName : t('stashFile'))}</strong><code>${esc(original.name)}</code></span><button class="icon-button" data-remove="${esc(original.name)}" aria-label="${t('remove')} ${esc(original.name)}" ${state.readingFiles ? 'disabled' : ''}>${icon('close')}</button></li>`).join('')}</ul>` : ''}</div>${location()}${notice()}${actions()}</section>`;
+  return `<section class="page"><h1>${t('uploadTitle')}</h1><p class="intro">${t('uploadHint')}</p><div class="card"><div class="drop-area" id="drop-area">${icon('upload')}<strong>${t('drop')}</strong><button class="button secondary" data-choose ${state.readingFiles ? 'disabled' : ''}>${t(state.readingFiles ? 'readingFiles' : entries.length ? 'addFiles' : 'choose')}</button></div><p class="hint">${t(state.route==='world'?'worldUploadKinds':state.options.endgameSkip ? 'endgameUploadHint' : 'uploadKinds')}</p><div class="file-kinds"><div><span>${t('characterFile')} <small>${t('required')}</small></span><code>1CHARACTERSLOT_BETA_*</code></div><div><span>${t('stashFile')} <small>${t(state.options.endgameSkip ? 'required' : 'optional')}</small></span><code>${esc(expected)}</code></div></div>${entries.length ? `<ul class="file-list">${entries.map(({original}) => `<li>${icon('file')}<span><strong>${esc(original.kind === 'character' ? original.data.characterName : t(original.kind==='global'?'globalFile':original.kind==='stashTab'?'stashTabFile':'stashFile'))}</strong><code>${esc(original.name)}</code></span><button class="icon-button" data-remove="${esc(original.name)}" aria-label="${t('remove')} ${esc(original.name)}" ${state.readingFiles ? 'disabled' : ''}>${icon('close')}</button></li>`).join('')}</ul>` : ''}</div>${location()}${notice()}${actions()}</section>`;
 }
 function timelineLabel(run) { return `${localized(run.name)} · ${t(run.difficulty === 1 ? 'empowered' : 'normal')}`; }
 function timelineEditor() {
@@ -81,15 +82,35 @@ function factionEditor() {
   return `<section class="card world-card"><h2>${t('factionTitle')}</h2><label for="faction-select">${t('factionSelect')}</label><select id="faction-select">${factions.map(faction => `<option value="${faction.id}" ${faction.id === selected.id ? 'selected' : ''}>${esc(localized(faction.name))}</option>`).join('')}</select><div class="field-grid"><div class="field"><label for="faction-rank">${t('rank')}</label><select id="faction-rank" ${selected.rankEditable ? '' : 'disabled'}>${Array.from({length:selected.maxRank+1},(_,rank)=>rank).filter(rank=>rank || selected.rank===0).map(rank => `<option value="${rank}" ${rank === Number(rankValue) ? 'selected' : ''}>${language === 'zh' ? `${rank} ${t('rankOption')}` : `${t('rankOption')} ${rank}`}${rank === selected.maxRank ? ` · ${t('rankMax')}` : ''}</option>`).join('')}</select></div>${!selected.harbinger ? `<div class="field"><label for="faction-favor">${t('favor')}</label><input id="faction-favor" type="number" inputmode="numeric" min="0" max="2147483647" step="1" value="${esc(draft(`faction:${selected.id}:favor`,selected.favor))}"></div>` : ''}</div>${selected.harbinger ? `<p class="hint">${t(selected.rankEditable ? 'harbingerHint' : 'rankUnavailable')}</p>` : `<div class="reputation-summary"><span>${t('reputation')}<strong>${formatted(info.reputation)}${info.next != null ? ` / ${formatted(info.next)}` : ''}</strong></span><span>${t('totalReputation')}<strong>${formatted(info.total)}</strong></span></div><p class="hint compact">${t('rankReset')}</p><details class="rank-details"><summary>${t('rankTable')}</summary><div class="table-scroll"><table><thead><tr><th>${t('rank')}</th><th>${t('totalReputation')}</th><th>${t('nextRankCost')}</th></tr></thead><tbody>${Array.from({length:selected.maxRank},(_,i)=>factionRankInfo(selected.id,i+1)).map(rank => `<tr${rank.rank === info.rank ? ' class="selected-row"' : ''}><td>${rank.rank}</td><td>${formatted(rank.threshold)}</td><td>${rank.next == null ? t('rankMax') : formatted(rank.next)}</td></tr>`).join('')}</tbody></table></div></details>`}</section>`;
 }
 function worldPage() {
-  return `<section class="page"><h1>${t('worldTitle')}</h1><div class="world-sections">${timelineEditor()}${factionEditor()}</div>${notice()}${actions()}</section>`;
+  return `<section class="page"><h1>${t('worldTitle')}</h1>${modeEditor()}<div class="world-sections">${timelineEditor()}${factionEditor()}</div>${notice()}${actions()}</section>`;
 }
 function skillName(id) { return plannerData.skills[id]?.name ?? (id === 'na28' ? (language === 'zh' ? '移动' : 'Move') : /^evade\d$/.test(id) ? (language === 'zh' ? '闪避' : 'Evade') : id || t('empty')); }
 function reviewRows(entry) {
   const rows = [], handled = new Set();
-  const before = entry.original.data, after = entry.doc.data;
+  const before = entry.original?.data??{}, after = entry.doc.data;
+  if(!entry.original)return `<p class="hint">${t('newFile')} · <code>${esc(entry.doc.outputName)}</code>${entry.doc.kind==='stash'?` · ${t('emptyStorage')}`:''}</p>`;
   const push = (label, a, b, note = '', group = 'general') => rows.push({label, before:a, after:b, note, group});
   for (const change of entry.changes) {
     const path = change.path, root = path[0];
+    if(state.route==='world'&&['hardcore','soloChallenge','soloCharacterChallenge','deaths','died'].includes(root)){
+      if(handled.has('mode'))continue;handled.add('mode');
+      const title=data=>{const m=getCharacterMode(data);return `${t(m?.hardcore?'hardcoreMode':'normalMode')} · ${t(m?.solo?'soloMode':'sharedMode')}`;};
+      push(t('gameMode'),title(before),title(after));
+      if(number(before.deaths)!==number(after.deaths))push(language==='zh'?'死亡次数':'Deaths',number(before.deaths),number(after.deaths));
+      continue;
+    }
+    if(state.route==='world'&&entry.doc.kind!=='character'){
+      if(handled.has(root))continue;handled.add(root);
+      const names={gold:language==='zh'?'金币':'Gold',ancientBones:language==='zh'?'远古骨骸':'Ancient bones',materialsList:language==='zh'?'材料数量':'Materials',keysList:language==='zh'?'钥匙数量':'Keys',wovenEchoesList:language==='zh'?'编织回响数量':'Woven echoes',savedShards:language==='zh'?'词缀碎片数量':'Affix shards',highestCorruption:t('highestCorruption')};
+      if(names[root]){
+        const quantity=value=>Array.isArray(value)?value.reduce((sum,item)=>sum+BigInt(String(item.quantity??0)),0n).toString():String(value??0);
+        push(names[root],quantity(before[root]),quantity(after[root]));
+      }else if(['retiredStashes','retiredStashesData'].includes(root)){
+        if(handled.has('retired'))continue;handled.add('retired');push(t('mergeStorage'),(before.retiredStashes??[]).length,(after.retiredStashes??[]).length);
+      }else if(root==='removeOnly')push(language==='zh'?'只取出仓库':'Remove-only stash',t(before.removeOnly?'unlocked':'locked'),t(after.removeOnly?'unlocked':'locked'));
+      else if(root!=='stashType')push(language==='zh'?({stashes:'全局仓库索引',savedQuests:'仓库任务',unlockedBlessings:'已解锁祝福',dungeonCompletion:'地下城进度',monolithTimelineBranchCompletion:'世界线分支进度',monolithTimelineDifficultyCompletion:'世界线通关进度',monolithTimelineUnlock:'世界线解锁进度',optionalChaptersCompleted:'可选章节',isTimelineProgressionPointsThresholdReached:'世界线进度门槛',keysTabUnlocked:'钥匙页',wovenEchoesTabUnlocked:'编织回响页',giftingTabUnlocked:'赠礼页'}[root]??root):root,Array.isArray(before[root])?before[root].length:String(before[root]??''),Array.isArray(after[root])?after[root].length:String(after[root]??''));
+      continue;
+    }
     if (state.options.endgameSkip && ['monolithRuns', 'timelineCompletion', 'timelineDifficultyCompletion', 'timelineDifficultyUnlocks', 'monolithTimelineBranchCompletion', 'monolithTimelineDifficultyCompletion', 'monolithTimelineUnlock', 'isTimelineProgressionPointsThresholdReached', 'keysTabUnlocked', 'wovenEchoesTabUnlocked', 'keysList', 'wovenEchoesList'].includes(root)) {
       if (['keysList','wovenEchoesList'].includes(root)) {
         if (handled.has(root)) continue;
@@ -187,7 +208,7 @@ function reviewRows(entry) {
 }
 function reviewPage() {
   const changed=flow.changedFiles();
-  return `<section class="page review"><h1>${t('reviewTitle')}</h1><p class="intro">${t('reviewHint')}</p>${changed.map(entry=>`<section class="card review-file"><h2>${esc(entry.doc.kind==='character'?entry.doc.data.characterName:t('stashFile'))}</h2><code class="file-caption">${esc(entry.doc.outputName)}</code>${reviewRows(entry)}</section>`).join('')||`<div class="card"><p class="hint">${t('noChanges')}</p></div>`}${state.warnings.length?`<details class="sync-notes"><summary>${t('warnings')} (${state.warnings.length})</summary><ul>${state.warnings.map(message=>`<li>${esc(errorText({message}))}</li>`).join('')}</ul></details>`:''}<div class="card download-card"><label class="acknowledgement"><input type="checkbox" id="acknowledge" ${state.acknowledged?'checked':''}><span>${t('ack')}</span></label><div class="download-files">${changed.map(entry=>`<div><code>${esc(entry.doc.outputName)}</code><button class="button primary" data-download="${esc(entry.doc.outputName)}" ${state.acknowledged?'':'disabled'}>${icon(view.downloadedFiles.has(entry.doc.outputName)?'check':'download')}${t(entry.doc.kind==='character'?'downloadCharacter':'downloadStash')}</button></div>`).join('')}</div>${changed.length>1?`<p class="hint compact">${t('separateFiles')}</p>`:''}<p class="hint">${t('downloadHint')}</p></div>${location()}${notice()}${actions(false)}</section>`;
+  return `<section class="page review"><h1>${t('reviewTitle')}</h1><p class="intro">${t('reviewHint')}</p>${state.migration?`<section class="card"><h2>${t('stashMigration')}</h2><p><code>${esc(state.migration.from)}</code> → <code>${esc(state.migration.to)}</code></p><p class="hint">${state.migration.merge?t('mergeModeHint'):state.migration.created?t('emptyStorage'):t('modeHint')}</p>${state.migration.createdFiles.length?`<p class="hint">${t('newFile')}: ${state.migration.createdFiles.map(esc).join(', ')}</p>`:''}</section>`:''}${changed.map(entry=>`<section class="card review-file"><h2>${esc(entry.doc.kind==='character'?entry.doc.data.characterName:t(entry.doc.kind==='global'?'globalFile':entry.doc.kind==='stashTab'?'stashTabFile':'stashFile'))}</h2><code class="file-caption">${esc(entry.doc.outputName)}</code>${reviewRows(entry)}</section>`).join('')||`<div class="card"><p class="hint">${t('noChanges')}</p></div>`}${state.warnings.length?`<details class="sync-notes"><summary>${t('warnings')} (${state.warnings.length})</summary><ul>${state.warnings.map(message=>`<li>${esc(errorText({message}))}</li>`).join('')}</ul></details>`:''}<div class="card download-card"><label class="acknowledgement"><input type="checkbox" id="acknowledge" ${state.acknowledged?'checked':''}><span>${t('ack')}</span></label><div class="download-files">${changed.map(entry=>`<div><code>${esc(entry.doc.outputName)}</code><button class="button primary" data-download="${esc(entry.doc.outputName)}" ${state.acknowledged?'':'disabled'}>${icon(view.downloadedFiles.has(entry.doc.outputName)?'check':'download')}${t(entry.doc.kind==='character'?'downloadCharacter':'downloadStash')}</button></div>`).join('')}</div>${changed.length>1?`<p class="hint compact">${t('separateFiles')}</p>`:''}<p class="hint">${t('downloadHint')}</p></div>${location()}${notice()}${actions(false)}</section>`;
 }
 function tutorial() {
   return `<dialog id="tutorial-dialog" aria-labelledby="tutorial-title"><div class="dialog-head"><h2 id="tutorial-title">${t('tutorialTitle')}</h2><button class="icon-button" id="close-tutorial" aria-label="${t('close')}">${icon('close')}</button></div><ol>${t('tutorialSteps').map(step=>`<li>${esc(step)}</li>`).join('')}</ol><a class="text-link" href="${plannerUrl()}" target="_blank" rel="noopener noreferrer">${t('openPlanner')}${icon('external')}</a><div class="demo-head"><span>${t('tutorialDemo')}</span><button class="text-link" id="replay-tutorial">${t('replay')}</button></div><img id="tutorial-image" src="./tutorial/save-to-planner.gif" alt="${t('tutorialAlt')}" width="1513" height="1127"></dialog>`;
@@ -199,6 +220,20 @@ function filterImportButton() {
 }
 function filterImportCard() {
   return `<section class="card filter-import-card"><h2>${language === 'zh' ? '继续编辑过滤器' : 'Continue editing a filter'}</h2><p class="hint">${language === 'zh' ? '导入本工具下载的 XML，恢复词缀、隐藏类型和配色，无需重新输入配装链接。' : 'Import an XML downloaded from this tool to restore affixes, hidden types and colors. No build link is needed.'}</p>${filterImportButton()}</section>`;
+}
+function worldEntryCard() {
+  return `<section class="card filter-import-card world-entry-card"><h2>${t('worldEntry')}</h2><p class="hint">${t('worldEntryHint')}</p><button type="button" class="button secondary" id="world-entry" ${state.loading||state.readingFiles||view.filterImporting?'disabled':''}>${t('worldEntry')}${icon('arrow')}</button></section>`;
+}
+function modeEditor() {
+  if(state.route!=='world')return '';
+  const original=state.synced.find(d=>d.kind==='character'),mode=getCharacterMode(original);
+  if(!mode)return '';
+  const selected=state.modeDraft??{hardcore:mode.hardcore,solo:mode.solo,merge:false,createTarget:false};
+  const target=modeStashName(original,selected),changed=selected.hardcore!==mode.hardcore||selected.solo!==mode.solo;
+  const missing=!state.synced.some(d=>d.kind==='stash'&&d.outputName===target);
+  const preview=flow.previewMode();
+  const source=currentStash(state.synced),tabs=source?.data.tabsv2??[];
+  return `<section class="card world-card"><h2>${t('gameMode')}</h2><div class="field-grid"><div class="field"><label for="mode-life">${t('gameMode')}</label><select id="mode-life"><option value="normal" ${selected.hardcore?'':'selected'}>${t('normalMode')}</option><option value="hardcore" ${selected.hardcore?'selected':''}>${t('hardcoreMode')}</option></select></div><div class="field"><label for="mode-challenge">${t('challengeMode')}</label><select id="mode-challenge"><option value="shared" ${selected.solo?'':'selected'}>${t('sharedMode')}</option><option value="solo" ${selected.solo?'selected':''}>${t('soloMode')}</option></select></div></div><p class="hint">${t('modeHint')}</p>${changed?`<p class="hint">${t('sourceStash')}: <code>${esc(modeStashName(original))}</code><br>${t('targetStash')}: <code>${esc(target)}</code></p>${missing?`<label class="acknowledgement"><input id="mode-create" type="checkbox" ${selected.createTarget?'checked':''}><span>${t('createModeStash')}</span></label>`:''}${mode.solo&&!selected.solo?`<label class="acknowledgement"><input id="mode-merge" type="checkbox" ${selected.merge?'checked':''}><span>${t('mergeModeStash')}</span></label><p class="hint">${t('mergeModeHint')}</p>${selected.merge&&tabs.length?`<details><summary>${t('requiredTabs')} (${tabs.length})</summary>${tabs.map(name=>`<code class="file-caption">${esc(name)}</code>`).join('')}</details>`:''}`:''}${selected.hardcore&&!mode.hardcore&&mode.deaths?`<p class="hint">${t('modeDeathReset')}</p>`:''}<button type="button" class="button secondary small" data-choose>${t('addFiles')}</button>${preview.error?`<p class="message error" role="status">${esc(errorText(preview.error))}</p>`:''}`:''}</section>`;
 }
 function filterBuildSummary() {
   const build = filterView.filterDraft?.build ?? {};
@@ -228,7 +263,7 @@ async function importSelectedBuild(url, mode = 'sync') {
   if (view.filterImporting) return;
   const previous = state.step;
   view.notice = ''; state.error = null;
-  if (state.build && !state.loading && url.trim() === view.loadedBuildUrl) {
+  if (state.route!=='world' && state.build && !state.loading && url.trim() === view.loadedBuildUrl) {
     if (mode === 'filter') {
       if (!filterView.filterDraft || filterView.filterDraft.build?.id !== state.build.id) { filterView.filterDraft = createFilterDraft(state.build); filterView.filterStep = 1; filterView.filterUi = null; filterView.filterDirty = false; }
       filterView.build = state.build;
@@ -252,7 +287,7 @@ async function importSelectedBuild(url, mode = 'sync') {
 function render() {
   filterView.language=language;
   document.documentElement.lang=language==='zh'?'zh-CN':'en';document.title=`LE Save Editor · ${view.mode==='filter'?t('filterRoute'):t('steps')[state.step]}`;
-  app.innerHTML=`<header class="site-header"><a class="brand" href="#" id="brand-link">LE Save Editor</a><div class="language-switch" role="group" aria-label="Language"><button data-language="zh" aria-pressed="${language==='zh'}">中文</button><button data-language="en" aria-pressed="${language==='en'}">English</button></div></header>${view.mode==='filter'?'':`<nav class="stepper" aria-label="${language==='zh'?'操作步骤':'Steps'}">${t('steps').map((label,index)=>`<button data-step="${index}" ${index>=state.step||state.loading||state.readingFiles?'disabled':''} ${index===state.step?'aria-current="step"':''} class="${index<state.step?'complete':''}"><span class="step-index">${index<state.step?icon('check'):index+1}</span><span>${label}</span></button>`).join('')}</nav>`}<main id="main-content" tabindex="-1">${view.mode==='filter'?filterPage():[linkPage,syncPage,uploadPage,worldPage,reviewPage][state.step]()}</main><footer><span>${t('localOnly')}</span><span>${t('version')}<a href="https://github.com/noobdawn/LESaveEditor" target="_blank" rel="noopener noreferrer">${t('source')}</a></span></footer><input type="file" id="save-input" multiple hidden aria-label="${t('choose')}"><input type="file" id="filter-xml-input" accept=".xml,application/xml,text/xml" hidden aria-label="${language === 'zh' ? '选择过滤器 XML' : 'Choose filter XML'}">${view.tutorial?tutorial():''}`;
+  app.innerHTML=`<header class="site-header"><a class="brand" href="#" id="brand-link">LE Save Editor</a><div class="language-switch" role="group" aria-label="Language"><button data-language="zh" aria-pressed="${language==='zh'}">中文</button><button data-language="en" aria-pressed="${language==='en'}">English</button></div></header>${view.mode==='filter'?'':`<nav class="stepper" aria-label="${language==='zh'?'操作步骤':'Steps'}">${(state.route==='world'&&state.step>0?t('worldSteps'):t('steps')).map((label,position)=>{const index=state.route==='world'&&state.step>0?[0,2,3,4][position]:position;return `<button data-step="${index}" ${index>=state.step||state.loading||state.readingFiles?'disabled':''} ${index===state.step?'aria-current="step"':''} class="${index<state.step?'complete':''}"><span class="step-index">${index<state.step?icon('check'):position+1}</span><span>${label}</span></button>`;}).join('')}</nav>`}<main id="main-content" tabindex="-1">${view.mode==='filter'?filterPage():[linkPage,syncPage,uploadPage,worldPage,reviewPage][state.step]()}</main><footer><span>${t('localOnly')}</span><span>${t('version')}<a href="https://github.com/noobdawn/LESaveEditor" target="_blank" rel="noopener noreferrer">${t('source')}</a></span></footer><input type="file" id="save-input" multiple hidden aria-label="${t('choose')}"><input type="file" id="filter-xml-input" accept=".xml,application/xml,text/xml" hidden aria-label="${language === 'zh' ? '选择过滤器 XML' : 'Choose filter XML'}">${view.tutorial?tutorial():''}`;
   bindEvents();if(view.tutorial)document.querySelector('#tutorial-dialog').showModal();
 }
 function renderStep(previous) { render();if(previous!==state.step){window.scrollTo(0,0);document.querySelector('#main-content').focus({preventScroll:true});} }
@@ -260,13 +295,14 @@ function downloadFile(file, mime = 'application/octet-stream') {
   const url=URL.createObjectURL(new Blob([file.text],{type:mime}));
   const anchor=document.createElement('a');anchor.href=url;anchor.download=file.name;document.body.append(anchor);anchor.click();anchor.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);
 }
-async function loadFiles(files) { const loading=flow.addFiles(files);render();await loading;view.downloaded=false;render(); }
+async function loadFiles(files) { const previous=state.step,loading=flow.addFiles(files);render();const success=await loading;if(success&&state.route==='world'&&previous>=3)flow.synchronize();view.downloaded=false;render(); }
 function bindEvents() {
   document.querySelectorAll('[data-language]').forEach(button=>button.onclick=()=>{language=button.dataset.language;try{localStorage.setItem('le-save-editor-language',language);}catch{}view.notice='';render();});
   document.querySelector('#brand-link').onclick=event=>{event.preventDefault();if(state.loading||state.readingFiles)return;const previous=state.step;view.mode='sync';flow.goBack(0);renderStep(previous);};
   document.querySelectorAll('[data-step]').forEach(button=>button.onclick=()=>{const previous=state.step;flow.goBack(Number(button.dataset.step));renderStep(previous);});
   document.querySelector('#back-button')?.addEventListener('click',()=>{const previous=state.step;flow.goBack();view.notice='';renderStep(previous);});
   document.querySelector('#build-form')?.addEventListener('submit',event=>{event.preventDefault();importSelectedBuild(document.querySelector('#build-url').value,event.submitter?.value||'sync');});
+  document.querySelector('#world-entry')?.addEventListener('click',()=>{if(view.filterImporting)return;view.mode='sync';view.notice='';view.timeline=null;view.faction=null;flow.startWorldEdit();renderStep(-1);});
   document.querySelector('#filter-import')?.addEventListener('click', () => document.querySelector('#filter-xml-input').click());
   document.querySelector('#filter-xml-input')?.addEventListener('change', event => { const file = event.target.files?.[0]; event.target.value = ''; return importFilterFile(file); });
   document.querySelector('#filter-back')?.addEventListener('click',()=>{view.mode='sync';flow.goBack(0);view.notice='';renderStep(-1);});
@@ -285,6 +321,14 @@ function bindEvents() {
   document.querySelector('#faction-select')?.addEventListener('change',event=>{view.faction=event.target.value;render();document.querySelector('#faction-select').focus({preventScroll:true});});
   document.querySelector('#faction-rank')?.addEventListener('change',event=>{flow.setWorldEdit({kind:'faction',id:view.faction,field:'rank',value:event.target.value});render();document.querySelector('#faction-rank').focus({preventScroll:true});});
   document.querySelector('#faction-favor')?.addEventListener('input',event=>flow.setWorldEdit({kind:'faction',id:view.faction,field:'favor',value:event.target.value}));
+  const changeMode=()=>{
+    const mode=getCharacterMode(state.synced.find(d=>d.kind==='character'));if(!mode)return;
+    const next={hardcore:document.querySelector('#mode-life').value==='hardcore',solo:document.querySelector('#mode-challenge').value==='solo',merge:document.querySelector('#mode-merge')?.checked??false,createTarget:document.querySelector('#mode-create')?.checked??false};
+    const previous=state.modeDraft??mode;
+    if(next.hardcore!==previous.hardcore||next.solo!==previous.solo){next.createTarget=false;next.merge=false;}
+    flow.setMode(next);view.faction=null;render();
+  };
+  for(const selector of ['#mode-life','#mode-challenge','#mode-merge','#mode-create'])document.querySelector(selector)?.addEventListener('change',changeMode);
   document.querySelector('#acknowledge')?.addEventListener('change',event=>{state.acknowledged=event.target.checked;document.querySelectorAll('[data-download]').forEach(button=>{button.disabled=!state.acknowledged;});});
   document.querySelectorAll('[data-download]').forEach(button=>button.onclick=()=>{
     try{const files=flow.downloads(),file=files.find(file=>file.name===button.dataset.download);if(!file)return;downloadFile(file);view.downloadedFiles.add(file.name);view.downloaded=files.every(file=>view.downloadedFiles.has(file.name));view.notice=t('downloaded');render();document.querySelector(`[data-download="${CSS.escape(file.name)}"]`)?.focus({preventScroll:true});}

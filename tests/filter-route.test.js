@@ -8,6 +8,7 @@ import * as planner from '../web/src/core/planner.js';
 import * as world from '../web/src/core/world.js';
 import * as campaign from '../web/src/core/campaign.js';
 import * as endgame from '../web/src/core/endgame.js';
+import * as modes from '../web/src/core/modes.js';
 import { getEquipment } from '../web/src/core/equipment.js';
 import { createValueFilterDraft as createFilterDraft, generateValueFilter as generateFilter, restoreValueFilterDraft } from '../web/src/core/value-filter.js';
 import { MAX_FILTER_XML_BYTES } from '../web/src/core/filter-settings.js';
@@ -36,7 +37,7 @@ function routeHarness(fetchBuild = async () => build()) {
   };
   for (const selector of ['#app', '#main-content', '#brand-link', '#save-input']) element(selector);
   const context = vm.createContext({
-    ...planner, ...world, ...campaign, ...endgame, getEquipment, createFilterDraft, restoreValueFilterDraft, MAX_FILTER_XML_BYTES,
+    ...planner, ...world, ...campaign, ...endgame, ...modes, getEquipment, createFilterDraft, restoreValueFilterDraft, MAX_FILTER_XML_BYTES,
     createWorkflow: () => createWorkflow({ fetchBuild }), SYNC_OPTIONS,
     messages, classes, masteries, icon, plannerData,
     renderFilterWorkbench: state => { workbenchCalls.push({ kind: 'render', state }); return '<div class="filter-workbench"></div>'; },
@@ -58,10 +59,38 @@ function routeHarness(fetchBuild = async () => build()) {
     const originalRender = render;
     render = () => {};
     globalThis.probe = { state, flow, view, filterView, importSelectedBuild, importFilterFile, filterPage, bindEvents,
-      linkPage, syncPage, uploadPage, reviewRows, actions, render: originalRender };
+      linkPage, syncPage, uploadPage, worldPage, reviewRows, loadFiles, actions, render: originalRender };
   `, context, { filename: 'main.js' });
   return { ...context.probe, element, elements, lists, windowEvents, workbenchCalls, downloads };
 }
+
+test('third home card enters an independent four-step world workflow with mode editing and multiple stash inputs', async () => {
+  let fetched=0;const ui=routeHarness(async()=>{fetched++;return build();});
+  assert.match(ui.linkPage(),/id="world-entry"/);
+  const button=ui.element('#world-entry');ui.bindEvents();button.listeners.click();
+  assert.equal(ui.state.route,'world');assert.equal(ui.state.step,2);assert.equal(fetched,0);
+  ui.render();assert.doesNotMatch(ui.elements.get('#app').innerHTML,/2 配装同步|<span>配装同步<\/span>/);
+  assert.match(ui.uploadPage(),/Epoch_Local_Global_Data_Beta/);
+  const c=parseSave('EPOCH'+JSON.stringify({id:'7',characterName:'Synthetic',level:2,hardcore:false,deaths:0,cycle:8,savedItems:[]}), '1CHARACTERSLOT_BETA_7');
+  assert.equal(await ui.flow.addFiles([{name:c.name,text:async()=>c.originalText}]),true);
+  assert.equal(ui.flow.synchronize(),true);
+  assert.match(ui.worldPage(),/id="mode-life"/);assert.match(ui.worldPage(),/id="mode-challenge"/);
+  assert.equal(fetched,0);assert.equal(String(ui.state.synced[0].data.level),'2');
+});
+
+test('world editor can add a missing destination file in-place without losing the selected mode', async()=>{
+  const ui=routeHarness();ui.flow.startWorldEdit();
+  const data={id:'7',characterName:'Synthetic',level:2,hardcore:false,deaths:0,cycle:8,savedItems:[]};
+  const file=(name,body)=>({name,text:async()=>'EPOCH'+JSON.stringify(body)});
+  await ui.flow.addFiles([file('1CHARACTERSLOT_BETA_7',data),file('STASH_CYCLE_8_0',{id:'STASH_CYCLE_8_0',cycle:8,gold:0,tabsv2:[]})]);
+  assert.equal(ui.flow.synchronize(),true);
+  ui.flow.setMode({hardcore:true,solo:false,merge:false,createTarget:false});
+  assert.equal(ui.flow.previewMode().error.code,'MODE_TARGET_STASH');
+  await ui.loadFiles([file('STASH_CYCLE_8_1',{id:'STASH_CYCLE_8_1',cycle:8,gold:0,tabsv2:[]})]);
+  assert.equal(ui.state.step,3);assert.equal(ui.flow.previewMode().error,undefined);
+  assert.equal(ui.flow.prepareReview(),true,ui.state.error?.message);
+  assert.equal(ui.state.result.find(d=>d.kind==='character').data.hardcore,true);
+});
 
 test('endgame switch requires campaign skip and the upload page makes the season stash mandatory', async () => {
   const ui=routeHarness();

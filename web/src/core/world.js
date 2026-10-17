@@ -1,5 +1,6 @@
 import catalog from '../data/world-data.json' with { type: 'json' };
 import { applySaveEdits } from './save.js';
+import { modeStashName, currentStash } from './modes.js';
 
 export { catalog as worldData };
 const own = (value, key) => value != null && Object.hasOwn(value, key);
@@ -16,9 +17,7 @@ function integer(value, min, max) {
 }
 
 export function expectedStashName(character) {
-  if (!character || !numeric(character.data.cycle) || typeof character.data.hardcore !== 'boolean') return null;
-  if (character.data.soloChallenge || character.data.soloCharacterChallenge) return null;
-  return `STASH_CYCLE_${String(character.data.cycle)}_${character.data.hardcore ? 1 : 0}`;
+  return modeStashName(character);
 }
 
 export function validateCompanion(character, stash) {
@@ -72,7 +71,7 @@ export function getFactions(character, stash) {
 export function applyWorldEdits(documents, edits = []) {
   if (!Array.isArray(edits)) fail('INVALID_WORLD_EDITS', '世界修改列表无效。', 'Invalid world changes.');
   const character = documents.find(doc => doc.kind === 'character');
-  const stash = documents.find(doc => doc.kind === 'stash');
+  const stash = currentStash(documents);
   const timelines = getTimelines(character);
   const factions = new Map(getFactions(character, stash).map(faction => [faction.id, faction]));
   const patches = new Map(documents.map(doc => [doc.name, []]));

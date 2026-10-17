@@ -1,5 +1,13 @@
 export const messages = {
   zh: {
+    entryTitle: '选择操作', worldEntry: '世界编辑', worldEntryHint: '无需配装链接，直接上传存档，编辑世界线、阵营与游戏模式。',
+    worldSteps: ['选择操作','上传存档','世界编辑','修改预览'], gameMode: '游戏模式', normalMode: '普通模式', hardcoreMode: '专家模式', challengeMode: '单人挑战', sharedMode: '账号共享仓库', soloMode: '单角色独立仓库',
+    modeHint: '模式与单人挑战可分别选择。切换后使用目标仓库；装备、背包和角色等级保持不变。',
+    worldUploadKinds: '上传一名角色和相关的同赛季仓库。合并时还需源仓库全部 _TAB_ 页与 Epoch_Local_Global_Data_Beta 全局索引，可分批添加。',
+    sourceStash: '当前仓库', targetStash: '目标仓库', createModeStash: '确认目标仓库尚不存在，新建空仓库（需全局索引）', mergeModeStash: '退出挑战时，将独立仓库合并回目标仓库',
+    mergeModeHint: '金币、材料、钥匙与回响资源相加；物品页保留为只取出仓库。阵营进度及共鸣保留在原仓库，进入游戏后处理待合并阵营数据。',
+    modeDeathReset: '切换到专家模式会将死亡次数清零；已有死亡成就记录保留。', requiredTabs: '需要同时上传的源仓库页', globalFile: '全局索引', stashTabFile: '仓库页', newFile: '新建文件',
+    stashMigration: '仓库切换', mergeStorage: '合并并保留只取出物品页', emptyStorage: '新建空的独立仓库',
     highestCorruption: '最高腐化记录',
     syncRoute: '离线存档同步', filterRoute: '构造过滤器', returnToLink: '返回配装链接',
     steps: ['配装链接', '配装同步', '上传存档', '世界编辑', '修改预览'], next: '下一步', back: '上一步', loading: '正在读取…', close: '关闭', remove: '移除',
@@ -24,6 +32,14 @@ export const messages = {
     warnings: '同步提示', characterClass: '职业', mastery: '专精', experience: '角色经验', passiveAllocation: '被动天赋分配', skillAllocation: '技能专精', harbingerProgress: '先兆进度', allocated: '已分配', unspent: '未分配', synchronized: '属性已同步', localOnly: '存档仅在浏览器中处理', version: '适配游戏 1.5.2.1', source: 'GitHub',
   },
   en: {
+    entryTitle: 'Choose an action', worldEntry: 'World editor', worldEntryHint: 'Upload saves directly to edit timelines, factions and game modes. No build URL is needed.',
+    worldSteps: ['Choose action','Upload saves','World editor','Review changes'], gameMode: 'Game mode', normalMode: 'Normal', hardcoreMode: 'Hardcore', challengeMode: 'Solo challenge', sharedMode: 'Account-shared stash', soloMode: 'Character-found stash',
+    modeHint: 'Game mode and solo challenge are separate choices. Switching uses the destination stash; equipped items, inventory and character level stay intact.',
+    worldUploadKinds: 'Upload one character and related stashes from the same season. Merging also requires every source _TAB_ file and Epoch_Local_Global_Data_Beta. Files can be added in batches.',
+    sourceStash: 'Current stash', targetStash: 'Destination stash', createModeStash: 'Confirm the destination does not exist and create an empty stash (global index required)', mergeModeStash: 'Merge the independent stash into the destination when leaving the challenge',
+    mergeModeHint: 'Gold, materials, keys and woven echoes are added together. Item tabs remain available as remove-only tabs. Faction progress and resonances stay in the old stash; process pending faction data in the game.',
+    modeDeathReset: 'Switching to Hardcore resets the death count. Existing death achievement records are retained.', requiredTabs: 'Required source stash tabs', globalFile: 'Global index', stashTabFile: 'Stash tab', newFile: 'New file',
+    stashMigration: 'Stash change', mergeStorage: 'Merge resources and retain remove-only tabs', emptyStorage: 'Create an empty independent stash',
     highestCorruption: 'Highest recorded corruption',
     syncRoute: 'Sync offline save', filterRoute: 'Create loot filter', returnToLink: 'Back to build link',
     steps: ['Build URL', 'Build sync', 'Upload saves', 'World editor', 'Review'], next: 'Next', back: 'Back', loading: 'Loading…', close: 'Close', remove: 'Remove',
