@@ -1,0 +1,242 @@
+{
+  "gameBuildHash": "8dfd6929fe2d10f2e77b7ed4c8e6910f49b2736b",
+  "gameVersion": "1.5.2.1",
+  "source": {
+    "bundleSha256": "7fac4caacd757f5f821f0e5c15f6eccf573aa8ebf89d3f464d124dc2e72ac93c",
+    "localization": {
+      "gameBuildHash": "8dfd6929fe2d10f2e77b7ed4c8e6910f49b2736b",
+      "files": [
+        {
+          "file": "localization-assets-shared_assets_all.bundle",
+          "sha256": "cb0782823d5c82e6e4198b274ef2c86758f6b5a3e19fc3afed39c15cbb38035a"
+        },
+        {
+          "file": "localization-string-tables-english(en)_assets_all.bundle",
+          "sha256": "b262984ce7c136d70b60d63e49a2d4f9dec25b3e2de66769568a40568dadd2df"
+        },
+        {
+          "file": "localization-string-tables-chinese(simplified)(zh)_assets_all.bundle",
+          "sha256": "7b9924d8d00ad075852e38f845e504d0f3e7d4c956b37b67baecbff51c303faf"
+        }
+      ],
+      "tables": [
+        "Item_Names",
+        "Item_Affixes",
+        "Common"
+      ],
+      "method": "Unity SharedTableData m_Entries key/id joined to StringTable m_TableData id/localized text; exact object consumption checked."
+    }
+  },
+  "resources": [
+    {
+      "baseTypeId": 104,
+      "subTypeId": 0,
+      "name": {
+        "zh": "竞技场钥匙",
+        "en": "Arena Key"
+      },
+      "collection": "keysList"
+    },
+    {
+      "baseTypeId": 104,
+      "subTypeId": 3,
+      "name": {
+        "zh": "记忆的竞技场钥匙",
+        "en": "Arena Key of Memory"
+      },
+      "collection": "keysList"
+    },
+    {
+      "baseTypeId": 104,
+      "subTypeId": 4,
+      "name": {
+        "zh": "时空圣殿钥匙",
+        "en": "Temporal Sanctum Key"
+      },
+      "collection": "keysList"
+    },
+    {
+      "baseTypeId": 104,
+      "subTypeId": 5,
+      "name": {
+        "zh": "无光深林钥匙",
+        "en": "Lightless Arbor Key"
+      },
+      "collection": "keysList"
+    },
+    {
+      "baseTypeId": 104,
+      "subTypeId": 6,
+      "name": {
+        "zh": "魂火堡垒钥匙",
+        "en": "Soulfire Bastion Key"
+      },
+      "collection": "keysList"
+    },
+    {
+      "baseTypeId": 104,
+      "subTypeId": 7,
+      "name": {
+        "zh": "先驱者之眼",
+        "en": "Harbinger Eye"
+      },
+      "collection": "keysList"
+    },
+    {
+      "baseTypeId": 104,
+      "subTypeId": 13,
+      "name": {
+        "zh": "传送门护符",
+        "en": "Portal Charm"
+      },
+      "collection": "keysList"
+    },
+    {
+      "baseTypeId": 104,
+      "subTypeId": 14,
+      "name": {
+        "zh": "鳞片护符",
+        "en": "Scale Charm"
+      },
+      "collection": "keysList"
+    },
+    {
+      "baseTypeId": 104,
+      "subTypeId": 22,
+      "name": {
+        "zh": "时空楔石",
+        "en": "Temporal Keystone"
+      },
+      "collection": "keysList"
+    },
+    {
+      "baseTypeId": 104,
+      "subTypeId": 23,
+      "name": {
+        "zh": "沙漏碎片",
+        "en": "Timeglass Fragment"
+      },
+      "collection": "keysList"
+    },
+    {
+      "baseTypeId": 107,
+      "subTypeId": 18,
+      "name": {
+        "zh": "永恒门扉",
+        "en": "Threshold of Eternity"
+      },
+      "collection": "wovenEchoesList"
+    },
+    {
+      "baseTypeId": 107,
+      "subTypeId": 29,
+      "name": {
+        "zh": "崩塌视界",
+        "en": "Collapsing Horizon"
+      },
+      "collection": "wovenEchoesList"
+    },
+    {
+      "baseTypeId": 107,
+      "subTypeId": 30,
+      "name": {
+        "zh": "消逝边缘",
+        "en": "The Fading Brink"
+      },
+      "collection": "wovenEchoesList"
+    },
+    {
+      "baseTypeId": 107,
+      "subTypeId": 47,
+      "name": {
+        "zh": "半神登临",
+        "en": "Demigod's Ascendance"
+      },
+      "collection": "wovenEchoesList"
+    }
+  ],
+  "harbingerQuests": {
+    "136": {
+      "step": 738,
+      "branch": 0,
+      "objectives": [
+        637,
+        638
+      ]
+    },
+    "137": {
+      "step": 742,
+      "branch": 0,
+      "objectives": [
+        639,
+        640,
+        800
+      ]
+    },
+    "138": {
+      "step": 745,
+      "branch": 0,
+      "objectives": [
+        641,
+        642
+      ]
+    },
+    "139": {
+      "step": 748,
+      "branch": 0,
+      "objectives": [
+        643,
+        644
+      ]
+    },
+    "140": {
+      "step": 751,
+      "branch": 0,
+      "objectives": [
+        645,
+        646
+      ]
+    },
+    "141": {
+      "step": 754,
+      "branch": 0,
+      "objectives": [
+        647,
+        648
+      ]
+    },
+    "142": {
+      "step": 757,
+      "branch": 0,
+      "objectives": [
+        649,
+        650
+      ]
+    },
+    "143": {
+      "step": 760,
+      "branch": 0,
+      "objectives": [
+        651,
+        652
+      ]
+    },
+    "144": {
+      "step": 763,
+      "branch": 0,
+      "objectives": [
+        653,
+        654
+      ]
+    },
+    "145": {
+      "step": 766,
+      "branch": 0,
+      "objectives": [
+        655,
+        656,
+        661
+      ]
+    }
+  }
+}

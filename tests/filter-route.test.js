@@ -3,9 +3,11 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { createWorkflow, SYNC_OPTIONS } from '../web/src/core/workflow.js';
+import { parseSave, diffSave } from '../web/src/core/save.js';
 import * as planner from '../web/src/core/planner.js';
 import * as world from '../web/src/core/world.js';
 import * as campaign from '../web/src/core/campaign.js';
+import * as endgame from '../web/src/core/endgame.js';
 import { getEquipment } from '../web/src/core/equipment.js';
 import { createValueFilterDraft as createFilterDraft, generateValueFilter as generateFilter, restoreValueFilterDraft } from '../web/src/core/value-filter.js';
 import { MAX_FILTER_XML_BYTES } from '../web/src/core/filter-settings.js';
@@ -34,7 +36,7 @@ function routeHarness(fetchBuild = async () => build()) {
   };
   for (const selector of ['#app', '#main-content', '#brand-link', '#save-input']) element(selector);
   const context = vm.createContext({
-    ...planner, ...world, ...campaign, getEquipment, createFilterDraft, restoreValueFilterDraft, MAX_FILTER_XML_BYTES,
+    ...planner, ...world, ...campaign, ...endgame, getEquipment, createFilterDraft, restoreValueFilterDraft, MAX_FILTER_XML_BYTES,
     createWorkflow: () => createWorkflow({ fetchBuild }), SYNC_OPTIONS,
     messages, classes, masteries, icon, plannerData,
     renderFilterWorkbench: state => { workbenchCalls.push({ kind: 'render', state }); return '<div class="filter-workbench"></div>'; },
@@ -56,10 +58,37 @@ function routeHarness(fetchBuild = async () => build()) {
     const originalRender = render;
     render = () => {};
     globalThis.probe = { state, flow, view, filterView, importSelectedBuild, importFilterFile, filterPage, bindEvents,
-      linkPage, syncPage, uploadPage, actions, render: originalRender };
+      linkPage, syncPage, uploadPage, reviewRows, actions, render: originalRender };
   `, context, { filename: 'main.js' });
   return { ...context.probe, element, elements, lists, windowEvents, workbenchCalls, downloads };
 }
+
+test('endgame switch requires campaign skip and the upload page makes the season stash mandatory', async () => {
+  const ui=routeHarness();
+  await ui.importSelectedBuild(URL_A);
+  assert.match(ui.syncPage(), /id="endgame-skip"[^>]*disabled/);
+  ui.flow.setOption('campaignSkip',true);ui.flow.setOption('endgameSkip',true);
+  assert.match(ui.syncPage(), /id="endgame-skip"[^>]*checked/);
+  assert.doesNotMatch(ui.syncPage(), /id="endgame-skip"[^>]*disabled/);
+  assert.match(ui.uploadPage(), /必须同时上传角色和同赛季仓库/);
+  assert.match(ui.uploadPage(), /赛季仓库 <small>必需/);
+  ui.flow.setOption('campaignSkip',false);
+  assert.equal(ui.state.options.endgameSkip,false);
+  assert.match(ui.syncPage(), /id="endgame-skip"[^>]*disabled/);
+});
+
+test('endgame review renders all new timelines and tickets with readable labels for both documents', () => {
+  const ui=routeHarness();ui.flow.setOption('campaignSkip',true);ui.flow.setOption('endgameSkip',true);
+  const originals=[parseSave('EPOCH'+JSON.stringify({characterName:'Synthetic',level:1,savedItems:[],cycle:8,hardcore:false}), '1CHARACTERSLOT_BETA_9'),
+    parseSave('EPOCH'+JSON.stringify({cycle:8,gold:0,tabsv2:[]}), 'STASH_CYCLE_8_0')];
+  const result=endgame.applyEndgameSkip(originals);
+  for(let index=0;index<2;index++){
+    const html=ui.reviewRows({original:originals[index],doc:result[index],changes:diffSave(originals[index],result[index])});
+    assert.doesNotMatch(html,/maxCorruption|highestCorruption|materialsList|\[object Object\]/);
+    if(index===0)assert.equal(html.match(/稳定值 1600 · 腐化值 300/g).length,10);
+    else for(const resource of endgame.ENDGAME_RESOURCES)assert.ok(html.includes(resource.name.zh));
+  }
+});
 
 test('default URL import retains the original sync options and requires a character save', async () => {
   const ui = routeHarness();

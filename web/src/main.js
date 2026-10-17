@@ -6,6 +6,7 @@ import { summarizeBuild } from './core/planner.js';
 import { getTimelines, getFactions, factionRankInfo, expectedStashName, worldData } from './core/world.js';
 import { getEquipment } from './core/equipment.js';
 import { campaignSummary, campaignData } from './core/campaign.js';
+import { ENDGAME_RESOURCES, endgameResourceQuantity } from './core/endgame.js';
 import plannerData from './data/planner-game-data.js';
 import { createValueFilterDraft as createFilterDraft, restoreValueFilterDraft } from './core/value-filter.js';
 import { MAX_FILTER_XML_BYTES } from './core/filter-settings.js';
@@ -35,7 +36,7 @@ function errorText(error) {
 const notice = () => state.error ? `<div class="message error" role="alert">${esc(errorText(state.error))}</div>` : view.notice ? `<div class="message success" role="status">${esc(view.notice)}</div>` : '';
 const location = () => `<div class="save-location"><span>${t('locationTitle')}</span><code>${esc(t('location'))}</code></div>`;
 function actions(next = true) {
-  const blocked=state.loading||state.readingFiles||(state.step===2&&![...state.files.values()].some(entry=>entry.original.kind==='character'));
+  const blocked=state.loading||state.readingFiles||(state.step===2&&(![...state.files.values()].some(entry=>entry.original.kind==='character')||(state.options.endgameSkip&&![...state.files.values()].some(entry=>entry.original.kind==='stash'))));
   return `<div class="actions">${state.step ? `<button class="button secondary" id="back-button" ${state.loading || state.readingFiles ? 'disabled' : ''}>${t('back')}</button>` : '<span></span>'}${next ? `<button class="button primary" id="next-button" ${blocked ? 'disabled' : ''}>${t('next')}${icon('arrow')}</button>` : ''}</div>`;
 }
 function buildSummary() {
@@ -45,14 +46,17 @@ function buildSummary() {
 function linkPage() {
   return `<section class="page entry filter-route"><h1>${t('linkTitle')}</h1><p class="intro">${t('linkHint')}</p><form id="build-form" class="card"><label for="build-url">${t('linkLabel')}</label><input id="build-url" type="text" inputmode="url" placeholder="https://www.lastepochtools.com/planner/…" value="${esc(state.buildUrl)}" required autocomplete="off" spellcheck="false" ${state.loading || view.filterImporting ? 'disabled' : ''}>${notice()}<div class="filter-route-actions"><button type="submit" name="intent" value="sync" class="button primary full" ${state.loading || view.filterImporting ? 'disabled' : ''}>${t(state.loading ? 'loading' : 'syncRoute')}${state.loading ? '<span class="spinner" aria-hidden="true"></span>' : icon('arrow')}</button><button type="submit" name="intent" value="filter" class="button secondary full" ${state.loading || view.filterImporting ? 'disabled' : ''}>${t('filterRoute')}${icon('arrow')}</button></div></form>${filterImportCard()}<button class="text-link tutorial-link" id="tutorial-link">${t('ownSave')}</button></section>`;
 }
+function endgameSkipOption() {
+  return `<div class="max-roll-option campaign-option endgame-option"><div class="campaign-copy"><div class="option-heading"><label for="endgame-skip"><strong>${t('endgameSkip')}</strong></label><span class="hint-trigger"><button type="button" class="hint-button" aria-label="${t('endgameSkip')}" aria-describedby="endgame-skip-hint">!</button><span role="tooltip" id="endgame-skip-hint">${t('endgameSkipHint')}</span></span></div><small id="endgame-skip-description">${t('endgameSkipDescription')}</small></div><input id="endgame-skip" type="checkbox" role="switch" data-sync="endgameSkip" aria-describedby="endgame-skip-description" ${state.options.endgameSkip ? 'checked' : ''} ${state.options.campaignSkip ? '' : 'disabled'}></div>`;
+}
 function syncPage() {
-  return `<section class="page"><h1>${t('syncTitle')}</h1>${buildSummary()}<div class="card"><div class="sync-grid">${SYNC_OPTIONS.map(key => `<label class="sync-option"><input type="checkbox" data-sync="${key}" ${state.options[key] ? 'checked' : ''}><span><strong>${t(key)}</strong><small>${t(key+'Hint')}</small></span></label>`).join('')}</div><label class="max-roll-option"><span><strong>${t('maxRolls')}</strong><small>${t('maxRollsHint')}</small></span><input type="checkbox" role="switch" data-sync="maxRolls" ${state.options.maxRolls ? 'checked' : ''}></label><div class="max-roll-option campaign-option"><div class="campaign-copy"><div class="option-heading"><label for="campaign-skip"><strong>${t('campaignSkip')}</strong></label><span class="hint-trigger"><button type="button" class="hint-button" aria-label="${t('campaignSkipInfo')}" aria-describedby="campaign-skip-hint">!</button><span role="tooltip" id="campaign-skip-hint">${t('campaignSkipHint')}</span></span></div><small id="campaign-skip-description">${t('campaignSkipDescription')}</small></div><input id="campaign-skip" type="checkbox" role="switch" data-sync="campaignSkip" aria-describedby="campaign-skip-description" ${state.options.campaignSkip ? 'checked' : ''}></div></div><p class="hint">${t('replaceHint')}</p>${notice()}${actions()}</section>`;
+  return `<section class="page"><h1>${t('syncTitle')}</h1>${buildSummary()}<div class="card"><div class="sync-grid">${SYNC_OPTIONS.map(key => `<label class="sync-option"><input type="checkbox" data-sync="${key}" ${state.options[key] ? 'checked' : ''}><span><strong>${t(key)}</strong><small>${t(key+'Hint')}</small></span></label>`).join('')}</div><label class="max-roll-option"><span><strong>${t('maxRolls')}</strong><small>${t('maxRollsHint')}</small></span><input type="checkbox" role="switch" data-sync="maxRolls" ${state.options.maxRolls ? 'checked' : ''}></label><div class="max-roll-option campaign-option"><div class="campaign-copy"><div class="option-heading"><label for="campaign-skip"><strong>${t('campaignSkip')}</strong></label><span class="hint-trigger"><button type="button" class="hint-button" aria-label="${t('campaignSkipInfo')}" aria-describedby="campaign-skip-hint">!</button><span role="tooltip" id="campaign-skip-hint">${t('campaignSkipHint')}</span></span></div><small id="campaign-skip-description">${t('campaignSkipDescription')}</small></div><input id="campaign-skip" type="checkbox" role="switch" data-sync="campaignSkip" aria-describedby="campaign-skip-description" ${state.options.campaignSkip ? 'checked' : ''}></div>${endgameSkipOption()}</div><p class="hint">${t('replaceHint')}</p>${notice()}${actions()}</section>`;
 }
 function uploadPage() {
   const entries = [...state.files.values()];
   const loadedCharacter = entries.find(entry => entry.original.kind === 'character')?.original;
   const expected = expectedStashName(loadedCharacter) ?? 'STASH_CYCLE_*';
-  return `<section class="page"><h1>${t('uploadTitle')}</h1><p class="intro">${t('uploadHint')}</p><div class="card"><div class="drop-area" id="drop-area">${icon('upload')}<strong>${t('drop')}</strong><button class="button secondary" data-choose ${state.readingFiles ? 'disabled' : ''}>${t(state.readingFiles ? 'readingFiles' : entries.length ? 'addFiles' : 'choose')}</button></div><p class="hint">${t('uploadKinds')}</p><div class="file-kinds"><div><span>${t('characterFile')} <small>${t('required')}</small></span><code>1CHARACTERSLOT_BETA_*</code></div><div><span>${t('stashFile')} <small>${t('optional')}</small></span><code>${esc(expected)}</code></div></div>${entries.length ? `<ul class="file-list">${entries.map(({original}) => `<li>${icon('file')}<span><strong>${esc(original.kind === 'character' ? original.data.characterName : t('stashFile'))}</strong><code>${esc(original.name)}</code></span><button class="icon-button" data-remove="${esc(original.name)}" aria-label="${t('remove')} ${esc(original.name)}" ${state.readingFiles ? 'disabled' : ''}>${icon('close')}</button></li>`).join('')}</ul>` : ''}</div>${location()}${notice()}${actions()}</section>`;
+  return `<section class="page"><h1>${t('uploadTitle')}</h1><p class="intro">${t('uploadHint')}</p><div class="card"><div class="drop-area" id="drop-area">${icon('upload')}<strong>${t('drop')}</strong><button class="button secondary" data-choose ${state.readingFiles ? 'disabled' : ''}>${t(state.readingFiles ? 'readingFiles' : entries.length ? 'addFiles' : 'choose')}</button></div><p class="hint">${t(state.options.endgameSkip ? 'endgameUploadHint' : 'uploadKinds')}</p><div class="file-kinds"><div><span>${t('characterFile')} <small>${t('required')}</small></span><code>1CHARACTERSLOT_BETA_*</code></div><div><span>${t('stashFile')} <small>${t(state.options.endgameSkip ? 'required' : 'optional')}</small></span><code>${esc(expected)}</code></div></div>${entries.length ? `<ul class="file-list">${entries.map(({original}) => `<li>${icon('file')}<span><strong>${esc(original.kind === 'character' ? original.data.characterName : t('stashFile'))}</strong><code>${esc(original.name)}</code></span><button class="icon-button" data-remove="${esc(original.name)}" aria-label="${t('remove')} ${esc(original.name)}" ${state.readingFiles ? 'disabled' : ''}>${icon('close')}</button></li>`).join('')}</ul>` : ''}</div>${location()}${notice()}${actions()}</section>`;
 }
 function timelineLabel(run) { return `${localized(run.name)} · ${t(run.difficulty === 1 ? 'empowered' : 'normal')}`; }
 function timelineEditor() {
@@ -86,6 +90,49 @@ function reviewRows(entry) {
   const push = (label, a, b, note = '', group = 'general') => rows.push({label, before:a, after:b, note, group});
   for (const change of entry.changes) {
     const path = change.path, root = path[0];
+    if (state.options.endgameSkip && ['monolithRuns', 'timelineCompletion', 'timelineDifficultyCompletion', 'timelineDifficultyUnlocks', 'monolithTimelineBranchCompletion', 'monolithTimelineDifficultyCompletion', 'monolithTimelineUnlock', 'isTimelineProgressionPointsThresholdReached', 'keysTabUnlocked', 'wovenEchoesTabUnlocked', 'keysList', 'wovenEchoesList'].includes(root)) {
+      if (['keysList','wovenEchoesList'].includes(root)) {
+        if (handled.has(root)) continue;
+        handled.add(root);
+        for (const resource of ENDGAME_RESOURCES.filter(r => r.collection === root)) {
+          const a = endgameResourceQuantity(before, resource), b = endgameResourceQuantity(after, resource);
+          if (a !== b) push(`${t('endgameTickets')} · ${localized(resource.name)}`, a, b);
+        }
+      } else if (!handled.has('endgameTimelines')) {
+        handled.add('endgameTimelines');
+        const count = data => (data.timelineDifficultyUnlocks ?? []).filter(row => Object.hasOwn(worldData.timelines, row.timelineID) && row.progress.some(v => number(v) === 1)).length;
+        if (entry.doc.kind === 'character') {
+          push(t('endgameUnlocks'), count(before), count(after));
+          for (const run of after.monolithRuns ?? []) {
+            if (!worldData.timelines[run.timelineID]) continue;
+            const old = (before.monolithRuns ?? []).find(r => number(r.timelineID) === number(run.timelineID) && number(r.difficultyIndex) === number(run.difficultyIndex));
+            const value = r => r ? `${t('stability')} ${r.stability} · ${t('corruption')} ${r.savedEchoWeb?.corruption}` : t('empty');
+            if (value(old) !== value(run)) push(`${localized(worldData.timelines[run.timelineID].name)} · ${t(number(run.difficultyIndex) === 1 ? 'empowered' : 'normal')}`, value(old), value(run));
+          }
+        } else {
+          const unlocked = data => Object.keys(worldData.timelines).filter(id => (data.monolithTimelineUnlock?.[Number(id)] ?? []).some(v => number(v) === 1)).length;
+          push(t('endgameStashProgress'), `${unlocked(before)} / 10`, `${unlocked(after)} / 10`);
+        }
+      }
+      continue;
+    }
+    if (state.options.endgameSkip && root === 'factions' && (path.length === 1 || String(path[1]) === '2')) {
+      if (handled.has('endgameFaction')) continue;
+      handled.add('endgameFaction');
+      push(`${localized(worldData.factions['2'].name)} · ${t('rank')}`, before.factions?.['2']?.rank ?? 0, after.factions['2'].rank);
+      if (entry.doc.kind === 'stash') {
+        const count = data => Object.keys(data.factions?.['2']?.factionSpecific?.defeatedHarbingerTimelines ?? {}).filter(id => Object.hasOwn(worldData.timelines, id)).length;
+        push(t('harbingerProgress'), `${count(before)} / 10`, `${count(after)} / 10`);
+      }
+      continue;
+    }
+    if (state.options.endgameSkip && root === 'savedQuests' && entry.doc.kind === 'stash') {
+      if (handled.has('endgameQuests')) continue;
+      handled.add('endgameQuests');
+      const count = data => (data.savedQuests ?? []).filter(q => number(q.questID) >= 136 && number(q.questID) <= 145 && campaignData.steps[String(q.questStepID)]?.[1] === 2).length;
+      push(t('endgameQuests'), count(before), count(after));
+      continue;
+    }
     if (['savedQuests','unlockedWaypointScenes','portalUnlocked','focusedQuest','lastVisitedTownScene'].includes(root) && state.options.campaignSkip) {
       if (handled.has('campaign')) continue;
       handled.add('campaign');
@@ -129,6 +176,7 @@ function reviewRows(entry) {
     else if(root==='chosenMastery')push(t('mastery'),className(before.characterClass,before.chosenMastery),className(after.characterClass,after.chosenMastery));
     else if(root==='level')push(t('level'),change.before,change.after);
     else if(root==='currentExp')push(t('experience'),change.before,change.after);
+    else if(['maxCorruption','highestCorruption'].includes(root))push(t('highestCorruption'),change.before??0,change.after);
     else if(!['originalMastery','characterTreeNodeProgression'].includes(root))push(path.join('.'),change.before,change.after);
   }
   const table=items=>`<div class="table-scroll"><table class="review-table"><thead><tr><th>${t('field')}</th><th>${t('before')}</th><th>${t('after')}</th></tr></thead><tbody>${items.map(row=>`<tr><th scope="row">${esc(row.label)}</th><td>${esc(formatted(row.before))}</td><td>${esc(formatted(row.after))}${row.note?`<small>${esc(row.note)}</small>`:''}</td></tr>`).join('')}</tbody></table></div>`;
@@ -224,7 +272,7 @@ function bindEvents() {
   document.querySelector('#filter-back')?.addEventListener('click',()=>{view.mode='sync';flow.goBack(0);view.notice='';renderStep(-1);});
   if(view.mode==='filter') bindFilterWorkbench(filterView,{render,notify:(message,error=false)=>{if(error)state.error=new Error(message);else{state.error=null;view.notice=message;}render();},downloadFile:(text,name,mime)=>downloadFile({text,name},mime)});
   document.querySelector('#build-url')?.addEventListener('input',event=>{state.buildUrl=event.target.value;});
-  document.querySelectorAll('[data-sync]').forEach(input=>input.onchange=()=>flow.setOption(input.dataset.sync,input.checked));
+  document.querySelectorAll('[data-sync]').forEach(input=>input.onchange=()=>{ flow.setOption(input.dataset.sync,input.checked); if (['campaignSkip','endgameSkip'].includes(input.dataset.sync)) render(); });
   document.querySelector('#next-button')?.addEventListener('click',()=>{const previous=state.step;view.notice='';view.downloaded=false;view.downloadedFiles.clear();if(state.step===1)state.step=2;else if(state.step===2)flow.synchronize();else if(state.step===3)flow.prepareReview();renderStep(previous);});
   document.querySelectorAll('[data-choose]').forEach(button=>button.onclick=()=>document.querySelector('#save-input').click());
   document.querySelector('#save-input').onchange=event=>loadFiles(event.target.files);

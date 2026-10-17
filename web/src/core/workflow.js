@@ -1,6 +1,7 @@
 import { parseSave, serializeSave, diffSave } from './save.js';
 import { fetchPlannerBuild, applyPlannerBuild } from './planner.js';
 import { applyCampaignSkip } from './campaign.js';
+import { applyEndgameSkip } from './endgame.js';
 import { applyWorldEdits, validateCompanion, WorldError } from './world.js';
 
 export const SYNC_OPTIONS = ['equipment', 'idols', 'blessings', 'passives', 'skills', 'skillBar'];
@@ -20,7 +21,7 @@ function validateFiles(files, requireCharacter = false) {
 /** A five-step session. Originals are immutable; every synchronization starts from them. */
 export function createWorkflow({ fetchBuild = fetchPlannerBuild } = {}) {
   const state = { step: 0, build: null, buildUrl: '', loading: false, readingFiles: false, error: null,
-    options: { ...Object.fromEntries(SYNC_OPTIONS.map(key => [key, true])), maxRolls: false, campaignSkip: false },
+    options: { ...Object.fromEntries(SYNC_OPTIONS.map(key => [key, true])), maxRolls: false, campaignSkip: false, endgameSkip: false },
     files: new Map(), synced: [], result: [], warnings: [], worldEdits: new Map(), acknowledged: false,
   };
   let request;
@@ -45,7 +46,10 @@ export function createWorkflow({ fetchBuild = fetchPlannerBuild } = {}) {
       }
     },
     setOption(key, value) {
-      if (![...SYNC_OPTIONS, 'maxRolls', 'campaignSkip'].includes(key) || typeof value !== 'boolean') return;
+      if (![...SYNC_OPTIONS, 'maxRolls', 'campaignSkip', 'endgameSkip'].includes(key) || typeof value !== 'boolean') return;
+      if (key === 'endgameSkip' && value && !state.options.campaignSkip) return;
+      if (key === 'campaignSkip' && !value) state.options.endgameSkip = false;
+      if (['campaignSkip', 'endgameSkip'].includes(key)) state.worldEdits.clear();
       state.options[key] = value; invalidate(); state.error = null;
     },
     async addFiles(incoming) {
@@ -77,12 +81,14 @@ export function createWorkflow({ fetchBuild = fetchPlannerBuild } = {}) {
         if (state.loading || state.readingFiles) fail('BUSY', '请等待读取完成。', 'Wait for the current read to finish.');
         if (!state.build) fail('NEED_BUILD', '请先读取配装链接。', 'Load a build URL first.');
         const { character } = validateFiles(state.files, true);
+        if (state.options.endgameSkip && !state.options.campaignSkip) fail('ENDGAME_REQUIRES_CAMPAIGN', '请先开启“速通至异界”。', 'Enable campaign skip before endgame skip.');
         // These three character settings are mandatory in this workflow.
         const options = { ...state.options, class: true, level: true, weaverTree: false };
         // Quest rewards must exist before the planner validates its passive budget.
         const input = options.campaignSkip ? applyCampaignSkip(character.data).data : character.data;
         const applied = applyPlannerBuild(input, state.build, options);
-        state.synced = [...state.files.values()].map(({ original }) => original.name === character.name ? { ...original, data: applied.data } : original);
+        const documents = [...state.files.values()].map(({ original }) => original.name === character.name ? { ...original, data: applied.data } : original);
+        state.synced = options.endgameSkip ? applyEndgameSkip(documents) : documents;
         state.warnings = applied.warnings; state.result = []; state.acknowledged = false; state.step = 3;
         return true;
       } catch (error) { state.error = error; return false; }
