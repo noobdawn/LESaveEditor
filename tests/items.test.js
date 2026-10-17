@@ -250,7 +250,34 @@ test('Exulis retains the existing corrupted fixed-pool count range instead of in
   assert.throws(() => encodePlannerItem({ id, affixes: variants }, { containerID: 11 }), { code: 'INVALID_UNIQUE_VARIANT' });
 });
 
-test('only a matching fixed FakeUniqueMod bypasses the T8 source check; ordinary and foreign variants remain rejected', () => {
+test('BakqJGYy Exulis source aliases preserve owned type-6 variants and native legendary flags', () => {
+  const build = JSON.parse(readFileSync(new URL('./fixtures/planner-BakqJGYy.json', import.meta.url), 'utf8')).data;
+  for (const maxRolls of [false, true]) {
+    const result = applyPlannerItems({ savedItems: [] }, build, { idols: false, blessings: false, maxRolls });
+    const saved = result.data.savedItems.find(item => item.containerID === 11);
+    const decoded = decodeSavedItem(saved);
+    assert.equal(decoded.uniqueId, 469);
+    assert.equal(decoded.rarity, 9);
+    assert.equal(decoded.flags, 144);
+    assert.equal(decoded.extraFlags, 0, 'fixed pool entries are not a corruption-sealed last affix');
+    assert.deepEqual(decoded.affixes, [
+      { affixId: 1083, tier: 7, roll: maxRolls ? 255 : 128 },
+      { affixId: 1087, tier: 8, roll: maxRolls ? 255 : 128 },
+    ]);
+    assert.deepEqual(encodeItemData(decoded), saved.data);
+  }
+  // All five pool members can occupy either LET alias, even below T8.
+  for (const id of [1083, 1084, 1085, 1086, 1087]) for (const field of ['sealedAffix', 'primordialAffix']) {
+    const decoded = decodeSavedItem(encodePlannerItem({ id: build.equipment.amulet.id, [field]: { id: affixId(id), tier: 4, r: 19 } }, { containerID: 11 }));
+    assert.deepEqual(decoded.affixes, [{ affixId: id, tier: 4, roll: 19 }]);
+    assert.equal(decoded.rarity, 9);
+  }
+  assert.throws(() => encodePlannerItem({ id: build.equipment.amulet.id, sealedAffix: { id: affixId(26), tier: 7 } }, { containerID: 11 }), { code: 'UNSUPPORTED_ITEM_FEATURE' });
+  assert.throws(() => encodePlannerItem({ ...build.equipment.amulet, lp: 1 }, { containerID: 11 }), { code: 'INVALID_LEGENDARY_POTENTIAL' });
+  assert.throws(() => encodePlannerItem({ ...build.equipment.amulet, primordialAffix: build.equipment.amulet.sealedAffix }, { containerID: 11 }), { code: 'DUPLICATE_AFFIX' });
+});
+
+test('only a matching fixed variant bypasses the T8 source check; ordinary and foreign variants remain rejected', () => {
   for (const tier of [4, 8]) {
     const foreign = { id: affixId(1147), tier };
     for (const id of [rageRing.id, 'UAwRgrALA7CQ', baseId(4, 3)]) {

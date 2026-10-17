@@ -193,9 +193,10 @@ export function encodePlannerItem(item, { containerID, inventoryPosition = { x: 
   const supportsVariants = unique?.specificAffixes && variantIds.length > 0 &&
     variantIds.every(id => [6, 7].includes(catalog.affixes[id]?.specialType));
   const sealedAffix = item.sealedAffix ? plannerAffix(item.sealedAffix) : null;
-  // LET also uses sealedAffix/primordialAffix as slots for fixed FakeUniqueMod variants.
+  // LET also uses sealedAffix/primordialAffix as slots for owner-specific variants,
+  // including Exulis' type-6 corruption pool as well as type-7 FakeUniqueMods.
   // Their source field does not make them a regular seal or a T8 primordial affix.
-  const isFixedVariant = affix => supportsVariants && affix && catalog.affixes[affix.affixId].specialType === 7 && variantIds.includes(affix.affixId);
+  const isFixedVariant = affix => supportsVariants && affix && variantIds.includes(affix.affixId);
   const sealedVariant = isFixedVariant(sealedAffix);
   const corrupted = Boolean(flag(item.corrupted, 'corrupted') || unique?.preCorrupted || item.corruptedAffix || catalog.bases[identity.baseTypeId].subtypes[identity.subTypeId].corrupted);
   const ruined = flag(item.ruined, 'ruined');

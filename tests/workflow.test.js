@@ -18,6 +18,28 @@ function files(){
   }),file('STASH_CYCLE_8_0',{gold:100,tabsv2:[],cycle:8,factions})];
 }
 async function ready(){const flow=createWorkflow({fetchBuild:async()=>example});await flow.importBuild('om6w3Ypq');await flow.addFiles(files());return flow;}
+for (const maxRolls of [false, true]) test(`public BakqJGYy completes full sync, review and download (maxRolls=${maxRolls})`, async () => {
+  const build = JSON.parse(readFileSync(new URL('./fixtures/planner-BakqJGYy.json', import.meta.url), 'utf8'));
+  const before = structuredClone(build);
+  const flow = createWorkflow({ fetchBuild: async () => build });
+  assert.equal(await flow.importBuild('BakqJGYy'), true);
+  assert.equal(await flow.addFiles(files()), true);
+  const originals = [...flow.state.files.values()].map(entry => serializeSave(entry.original));
+  flow.setOption('maxRolls', maxRolls);
+  assert.equal(flow.synchronize(), true, flow.state.error?.message);
+  assert.equal(flow.prepareReview(), true, flow.state.error?.message);
+  flow.state.acknowledged = true;
+  const download = flow.downloads().find(item => item.name === '1CHARACTERSLOT_BETA_9');
+  const result = parseSave(download.text, download.name);
+  const amulet = decodeSavedItem(result.data.savedItems.find(item => Number(item.containerID) === 11));
+  assert.equal(amulet.uniqueId, 469);
+  assert.equal(amulet.rarity, 9);
+  assert.equal(amulet.flags, 144);
+  assert.equal(amulet.extraFlags, 0);
+  assert.deepEqual(amulet.affixes.map(a => [a.affixId, a.tier, a.roll]), [[1083, 7, maxRolls ? 255 : 128], [1087, 8, maxRolls ? 255 : 128]]);
+  assert.deepEqual([...flow.state.files.values()].map(entry => serializeSave(entry.original)), originals);
+  assert.deepEqual(build, before);
+});
 function deferred(){let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no;});return {promise,resolve,reject};}
 
 test('the workflow always syncs level, class and mastery even if option state is tampered with',async()=>{
