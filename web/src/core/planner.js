@@ -232,7 +232,10 @@ export function applyPlannerBuild(saveData, build, options = {}) {
   const mastery = Number(source.bio.chosenMastery);
   const targetLevel = settings.level ? Number(source.bio.level) : oldLevel;
   const questRewards = campaignSummary(saveData).passiveRewards;
-  const levelPointChange = earnedPassivePoints(targetLevel, questRewards) - earnedPassivePoints(oldLevel, questRewards);
+  // Repair points already earned from levels and completed quests before applying the level delta.
+  // Preserve any existing excess rather than granting earned points a second time.
+  const earnedOldPoints = earnedPassivePoints(oldLevel, questRewards);
+  const levelPointChange = earnedPassivePoints(targetLevel, questRewards) - earnedOldPoints;
   const identityChanged = oldClass !== classId || oldMastery !== mastery;
   if (identityChanged && !settings.class && Object.keys(DEFAULT_OPTIONS).some(key => !['class', 'level'].includes(key) && settings[key])) {
     fail('CLASS_MISMATCH', '配装职业或专精与存档不同，请先启用职业同步 / Class or mastery differs; enable class synchronization.');
@@ -254,7 +257,7 @@ export function applyPlannerBuild(saveData, build, options = {}) {
     const schema = gameData.passives[classId];
     const selected = selectedNodes(source.charTree.selected, 'charTree');
     const nodes = validateCurrentTree(selected, schema, { mastery, passive: true, field: 'charTree' });
-    const budget = savedPointBudget(saveData) + levelPointChange;
+    const budget = Math.max(savedPointBudget(saveData), earnedOldPoints) + levelPointChange;
     const spent = sum(selected.values());
     if (spent > budget || budget < 0) fail('INSUFFICIENT_PASSIVE_POINTS', `配装需要 ${spent} 天赋点，存档可用 ${Math.max(0, budget)} / Build needs ${spent} passive points; save has ${Math.max(0, budget)}.`, { required: spent, available: Math.max(0, budget) });
     const version = currentTreeVersion(source.charTree.version, schema.version, warnings, 'charTree');
@@ -262,7 +265,7 @@ export function applyPlannerBuild(saveData, build, options = {}) {
     // This cache belongs to the former allocation and is empty in current native saves.
     if (own(data, 'characterTreeNodeProgression')) set('characterTreeNodeProgression', [], 'passives');
   } else if (targetLevel !== oldLevel) {
-    const budget = savedPointBudget(saveData) + levelPointChange;
+    const budget = Math.max(savedPointBudget(saveData), earnedOldPoints) + levelPointChange;
     const spent = sum(data.savedCharacterTree.nodePoints);
     if (budget < spent) fail('LEVEL_BELOW_PASSIVES', '降级后无法保留现有天赋点，请同时同步天赋 / Lower level cannot retain existing passives; synchronize the passive tree.');
     set('savedCharacterTree', { ...data.savedCharacterTree, unspentPoints: budget - spent }, 'level');

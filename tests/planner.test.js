@@ -138,13 +138,14 @@ test('rejects points beyond node caps and unmet mastery requirements', () => {
   assert.throws(() => applyPlannerBuild(save(), raw, passivesOnly), { code: 'INVALID_TREE_REQUIREMENTS' });
 });
 
-test('does not create passive quest rewards or silently grant missing passive points', () => {
+test('does not create unearned quest rewards when the earned passive budget cannot support the build', () => {
   const original = save();
+  original.level = 10;
   original.savedCharacterTree.unspentPoints = 0;
   const raw = build();
   raw.data.charTree.selected = { 1: 8, 4: 8 };
-  assert.throws(() => applyPlannerBuild(original, raw, passivesOnly), { code: 'INSUFFICIENT_PASSIVE_POINTS' });
-  assert.equal(Number(original.level), 91);
+  assert.throws(() => applyPlannerBuild(original, raw, passivesOnly), error => error.code === 'INSUFFICIENT_PASSIVE_POINTS' && error.details.available === 8);
+  assert.equal(Number(original.level), 10);
 });
 
 test('requires deliberate class import and complete tree replacement on class change', () => {
