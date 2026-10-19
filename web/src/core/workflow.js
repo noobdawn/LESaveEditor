@@ -118,7 +118,15 @@ export function createWorkflow({ fetchBuild = fetchPlannerBuild } = {}) {
         modeCache=null;
         state.warnings = applied.warnings; state.result = []; state.acknowledged = false; state.step = 3;
         return true;
-      } catch (error) { state.error = error; return false; }
+      } catch (error) {
+        if (error.code === 'INSUFFICIENT_PASSIVE_POINTS' && !state.options.campaignSkip) {
+          const { required, available } = error.details;
+          error.message = `配装需要 ${required} 点被动天赋，当前可用 ${available} 点。请返回“配装同步”，开启“速通至异界”后重新同步；否则无法同步此配装。`;
+          error.messageEn = `This build needs ${required} passive points, but only ${available} are available. Go back to Build sync and enable "Skip to Monolith", then try again; otherwise this build cannot be synchronized.`;
+        }
+        state.error = error;
+        return false;
+      }
     },
     setWorldEdit(edit) {
       const key = edit.kind === 'timeline' ? `timeline:${edit.index}:${edit.field}` : `faction:${edit.id}:${edit.field}`;
