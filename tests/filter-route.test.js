@@ -27,9 +27,9 @@ function deferred() {
 }
 
 /** Run production routing and the real workflow; only presentation and browser I/O are replaced. */
-function routeHarness(fetchBuild = async () => build()) {
+function routeHarness(fetchBuild = async () => build(), { search = '', mainSource } = {}) {
   const elements = new Map(), lists = new Map(), windowEvents = new Map();
-  const workbenchCalls = [], downloads = [];
+  const workbenchCalls = [], downloads = [], navigations = [];
   const element = (selector, extra = {}) => {
     const control = { listeners: {}, value: '', dataset: {}, focus() {},
       addEventListener(type, handler) { this.listeners[type] = handler; }, ...extra };
@@ -48,12 +48,13 @@ function routeHarness(fetchBuild = async () => build()) {
       createElement: () => ({ click() { downloads.at(-1).name = this.download; }, remove() {} }),
       body: { append() {} },
     },
-    window: { addEventListener: (type, handler) => windowEvents.set(type, handler), scrollTo() {} },
+    URLSearchParams,
+    window: { location: { search, pathname: '/editor/', assign: url => navigations.push(url) }, addEventListener: (type, handler) => windowEvents.set(type, handler), scrollTo() {} },
     localStorage: { getItem: () => null, setItem() {} },
     URL: { createObjectURL: blob => { downloads.push({ blob }); return 'blob:filter-test'; }, revokeObjectURL() {} },
     Blob, setTimeout: () => {}, CSS: { escape: value => value },
   });
-  const source = readFileSync(new URL('../web/src/main.js', import.meta.url), 'utf8')
+  const source = (mainSource ?? readFileSync(new URL('../web/src/main.js', import.meta.url), 'utf8'))
     .replace(/^import[^\n]*\r?\n/gm, '').replace(/render\(\);\s*$/, '');
   vm.runInContext(source + `
     const originalRender = render;
@@ -61,7 +62,7 @@ function routeHarness(fetchBuild = async () => build()) {
     globalThis.probe = { state, flow, view, filterView, importSelectedBuild, importFilterFile, filterPage, bindEvents,
       linkPage, syncPage, uploadPage, worldPage, reviewRows, loadFiles, actions, render: originalRender };
   `, context, { filename: 'main.js' });
-  return { ...context.probe, element, elements, lists, windowEvents, workbenchCalls, downloads };
+  return { ...context.probe, element, elements, lists, windowEvents, workbenchCalls, downloads, navigations };
 }
 
 test('third home card enters an independent four-step world workflow with mode editing and multiple stash inputs', async () => {
@@ -369,4 +370,140 @@ test('error panels retain complete values containing separators and preserve str
   ui.lists.set('[data-language]', [english]); ui.bindEvents(); english.onclick(); ui.render();
   assert.match(ui.elements.get('#app').innerHTML, /Color is.*1 \/ 2.*an integer is required/);
   assert.doesNotMatch(ui.elements.get('#app').innerHTML, /颜色值为/);
+});
+
+test('dedicated landing routes keep sync and filter entry forms independent', () => {
+  const ui = routeHarness();
+  ui.view.entryIntent = 'sync';
+  const sync = ui.linkPage();
+  assert.match(sync, /value="sync"/);
+  assert.doesNotMatch(sync, /value="filter"|id="filter-import"|id="world-entry"/);
+  ui.view.entryIntent = 'filter';
+  const filter = ui.linkPage();
+  assert.match(filter, /value="filter"/);
+  assert.match(filter, /id="filter-import"/);
+  assert.doesNotMatch(filter, /value="sync"|id="world-entry"/);
+  ui.render();
+  assert.doesNotMatch(ui.elements.get('#app').innerHTML, /class="stepper"/);
+});
+
+test('query entries initialize only their intended workflow without fetching a build or loading files', () => {
+  for (const intent of ['sync', 'filter', 'world']) {
+    let requests = 0;
+    const ui = routeHarness(async () => { requests++; return build(); }, { search: '?entry=' + intent });
+    assert.equal(ui.view.entryIntent, intent);
+    assert.equal(ui.state.route, intent === 'world' ? 'world' : 'sync');
+    assert.equal(ui.state.step, intent === 'world' ? 2 : 0);
+    assert.equal(ui.state.files.size, 0);
+    assert.equal(ui.state.build, null);
+    assert.equal(ui.state.options.campaignSkip, false);
+    assert.equal(ui.state.options.endgameSkip, false);
+    assert.equal(requests, 0);
+  }
+});
+
+test('keyboard form submission follows the selected route even without a submitter', async () => {
+  for (const intent of ['sync', 'filter']) {
+    const ui = routeHarness(undefined, { search: '?entry=' + intent });
+    const form = ui.element('#build-form');
+    ui.element('#build-url', { value: URL_A });
+    ui.bindEvents();
+    form.listeners.submit({ preventDefault() {} });
+    // The event callback starts asynchronous import; wait until its workflow finishes.
+    for (let i = 0; i < 8; i++) await Promise.resolve();
+    assert.equal(ui.state.error, null);
+    assert.equal(ui.view.mode, intent);
+    assert.equal(ui.state.step, 1);
+    assert.equal(Boolean(ui.filterView.filterDraft), intent === 'filter');
+  }
+});
+
+test('new entry return controls navigate home without changing save data, and pending reads block brand navigation', () => {
+  for (const control of ['brand', 'back', 'step']) {
+    const ui = routeHarness(undefined, { search: '?entry=world' });
+    const original = { marker: 'preserve original' };
+    ui.state.files.set('keep', { original });
+    const back = ui.element('#back-button');
+    const step = { dataset: { step: '0' } };
+    ui.lists.set('[data-step]', [step]);
+    ui.bindEvents();
+    if (control === 'brand') ui.elements.get('#brand-link').onclick({ preventDefault() {} });
+    if (control === 'back') back.listeners.click();
+    if (control === 'step') step.onclick();
+    assert.deepEqual(ui.navigations, ['/editor/']);
+    assert.equal(ui.state.files.get('keep').original, original);
+    let prevented = false;
+    ui.windowEvents.get('beforeunload')({ preventDefault() { prevented = true; } });
+    assert.equal(prevented, true);
+  }
+  const pending = routeHarness(undefined, { search: '?entry=sync' });
+  pending.bindEvents(); pending.state.readingFiles = true;
+  pending.elements.get('#brand-link').onclick({ preventDefault() {} });
+  assert.equal(pending.navigations.length, 0);
+});
+
+function entryRegressionFiles() {
+  const factions = { 0: { rank: 8, reputation: 6212, favor: 129256 } };
+  const character = {
+    savedQuests: [], savedMonolithQuests: [], unlockedWaypointScenes: [], oneTimeEvents: [],
+    portalUnlocked: false, reachedTown: false, lastVisitedTownScene: null, focusedQuest: -1,
+    id: '9', characterName: 'Entry regression', level: 91, characterClass: 0, chosenMastery: 2, originalMastery: 2,
+    currentExp: 777, cycle: 8, hardcore: false, deaths: 0,
+    savedCharacterTree: { treeID: '', version: 4, nodeIDs: [], nodePoints: [], unspentPoints: 104 },
+    savedSkillTrees: [], abilityBar: ['', '', '', '', ''], factions,
+    savedItems: [{ containerID: 1, data: [99, 1, 2], futureField: 'keep' }],
+    monolithRuns: [{ timelineID: 1, difficultyIndex: 0, stability: 125, savedEchoWeb: { corruption: 0 } }],
+  };
+  return [['1CHARACTERSLOT_BETA_9', character], ['STASH_CYCLE_8_0', { gold: 100, tabsv2: [], cycle: 8, factions }]]
+    .map(([name, data]) => { const text = 'EPOCH' + JSON.stringify(data); return { name, text: async () => text }; });
+}
+
+async function entryRegressionOutput(ui, { worldOnly = false, maxRolls = false, endgame = false } = {}) {
+  if (!worldOnly) await ui.importSelectedBuild(URL_A, 'sync');
+  else if (ui.state.route !== 'world') ui.flow.startWorldEdit();
+  assert.equal(await ui.flow.addFiles(entryRegressionFiles()), true, ui.state.error?.message);
+  const originals = [...ui.state.files.values()].map(entry => JSON.stringify(entry.original.data));
+  ui.flow.setOption('maxRolls', maxRolls);
+  if (endgame) { ui.flow.setOption('campaignSkip', true); ui.flow.setOption('endgameSkip', true); }
+  assert.equal(ui.flow.synchronize(), true, ui.state.error?.message);
+  ui.flow.setWorldEdit({ kind: 'timeline', index: 0, field: 'stability', value: '300' });
+  ui.flow.setWorldEdit({ kind: 'faction', id: '0', field: 'favor', value: '200000' });
+  assert.equal(ui.flow.prepareReview(), true, ui.state.error?.message);
+  assert.throws(() => ui.flow.downloads(), { code: 'REVIEW_REQUIRED' });
+  ui.state.acknowledged = true;
+  const downloads = ui.flow.downloads();
+  assert.deepEqual([...ui.state.files.values()].map(entry => JSON.stringify(entry.original.data)), originals);
+  return JSON.stringify(downloads);
+}
+
+test('new sync entry produces byte-identical save downloads to the existing workflow for default, max rolls and endgame options', async t => {
+  let itemId = 1000;
+  t.mock.method(globalThis.crypto, 'getRandomValues', values => { for (let i = 0; i < values.length; i++) values[i] = itemId++; return values; });
+  for (const options of [{}, { maxRolls: true }, { endgame: true }]) {
+    const legacy = routeHarness();
+    const selected = routeHarness(undefined, { search: '?entry=sync' });
+    itemId = 1000;
+    const selectedOutput = await entryRegressionOutput(selected, options);
+    itemId = 1000;
+    assert.equal(selectedOutput, await entryRegressionOutput(legacy, options));
+  }
+});
+
+test('new world entry produces byte-identical world/faction downloads without importing a build', async () => {
+  const noFetch = async () => { throw new Error('World editing must stay offline'); };
+  const legacy = routeHarness(noFetch), selected = routeHarness(noFetch, { search: '?entry=world' });
+  assert.equal(await entryRegressionOutput(selected, { worldOnly: true }), await entryRegressionOutput(legacy, { worldOnly: true }));
+});
+
+test('new filter entry preserves generated XML and restores XML offline without creating save edits', async () => {
+  const legacy = routeHarness(), selected = routeHarness(undefined, { search: '?entry=filter' });
+  await legacy.importSelectedBuild(URL_A, 'filter');
+  await selected.importSelectedBuild(URL_A, 'filter');
+  const expected = generateFilter(legacy.filterView.filterDraft).xml;
+  assert.equal(generateFilter(selected.filterView.filterDraft).xml, expected);
+  const restored = routeHarness(async () => { throw new Error('XML import must stay offline'); }, { search: '?entry=filter' });
+  assert.equal(await restored.importFilterFile({ size: expected.length, text: async () => expected }), true);
+  assert.equal(generateFilter(restored.filterView.filterDraft).xml, expected);
+  assert.equal(restored.state.files.size, 0);
+  assert.equal(restored.state.worldEdits.size, 0);
 });
