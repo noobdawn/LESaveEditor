@@ -345,3 +345,28 @@ test('skill diagnostics reach the visible error panel in both languages without 
   assert.match(html, /level 33 but allocates 35 points/);
   assert.doesNotMatch(html, /已分配/);
 });
+
+test('error panels retain complete values containing separators and preserve structured filter diagnostics', async () => {
+  const ui = routeHarness();
+  ui.state.error = new world.WorldError('WORLD_RANGE', '稳定值输入为 "1 / 2"，请输入整数。', 'Stability is "1 / 2"; enter an integer.');
+  ui.render();
+  assert.ok(ui.elements.get('#app').innerHTML.includes('1 / 2'));
+  assert.match(ui.elements.get('#app').innerHTML, /请输入整数/);
+  assert.doesNotMatch(ui.elements.get('#app').innerHTML, /enter an integer/);
+
+  await ui.importSelectedBuild(URL_A, 'filter');
+  ui.bindEvents();
+  const callback = ui.workbenchCalls.filter(call => call.kind === 'bind').at(-1).callbacks;
+  const error = Object.assign(new Error('combined text / must not be reparsed'), {
+    code: 'INVALID_FILTER_VALUE', messageZh: '颜色值为 "1 / 2"，需要整数。',
+    messageEn: 'Color is "1 / 2"; an integer is required.',
+  });
+  callback.notify(error, true);
+  assert.equal(ui.state.error, error);
+  ui.render();
+  assert.match(ui.elements.get('#app').innerHTML, /颜色值为.*1 \/ 2.*需要整数/);
+  const english = { dataset: { language: 'en' } };
+  ui.lists.set('[data-language]', [english]); ui.bindEvents(); english.onclick(); ui.render();
+  assert.match(ui.elements.get('#app').innerHTML, /Color is.*1 \/ 2.*an integer is required/);
+  assert.doesNotMatch(ui.elements.get('#app').innerHTML, /颜色值为/);
+});

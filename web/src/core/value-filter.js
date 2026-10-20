@@ -43,6 +43,7 @@ const IDOL_TYPES = Array.from({ length: 9 }, (_, i) => i + 25);
 const ORDINARY_RARITIES = ['NORMAL', 'MAGIC', 'RARE', 'EXALTED'];
 const warning = (code, zh, en, sourcePath) => ({ code, message: label(zh, en), ...(sourcePath ? { sourcePath } : {}) });
 const fail = (code, zh, en) => { throw new FilterError(code, zh, en); };
+const fieldNames = { rareUniqueThreshold: ['稀有暗金权重阈值', 'Rare unique weight threshold'], rareSetThreshold: ['稀有套装权重阈值', 'Rare set weight threshold'], highAffixIds: ['高价值词缀', 'High-value affixes'], mediumAffixIds: ['有效词缀', 'Useful affixes'], uniqueIds: ['需求暗金', 'Target uniques'], setIds: ['需求套装', 'Target sets'] };
 const unique = values => [...new Set(values)];
 const sorted = values => unique(values).sort((a, b) => a - b);
 export const isValueEquipmentAffix = a => !!a && a.specialAffixType !== 7 && a.canRollOn.some(type => GEAR_TYPES.includes(type) || type === 41);
@@ -50,13 +51,15 @@ export const isValueIdolAffix = (a, baseTypeId) => !!a && a.specialAffixType !==
 const isGearAffix = isValueEquipmentAffix;
 function number(value, min, max, field, integer = false) {
   const result = Number(value);
-  if (value == null || value === '' || typeof value === 'boolean' || !Number.isFinite(result) || result < min || result > max || (integer && !Number.isInteger(result))) fail('INVALID_FILTER_VALUE', `无效值：${field}`, `Invalid value: ${field}`);
+  const groupId = field.endsWith('.color') ? field.slice(0, -6) : null;
+  const names = fieldNames[field] ?? (BY_GROUP[groupId] ? [BY_GROUP[groupId].name.zh + '·颜色', BY_GROUP[groupId].name.en + ' color'] : [field, field]);
+  if (value == null || value === '' || typeof value === 'boolean' || !Number.isFinite(result) || result < min || result > max || (integer && !Number.isInteger(result))) fail('INVALID_FILTER_VALUE', names[0] + '输入为 ' + String(value).slice(0, 80) + '，需要 ' + min + '–' + max + (integer ? ' 的整数' : ' 之间的数值') + '。请修改后重试。', names[1] + ' is ' + String(value).slice(0, 80) + '; enter ' + (integer ? 'an integer' : 'a number') + ' between ' + min + ' and ' + max + ', then retry.');
   return result;
 }
 function ids(values, dictionary, field) {
   if (!Array.isArray(values)) fail('INVALID_FILTER_SELECTION', `无效选择：${field}`, `Invalid selection: ${field}`);
   const result = sorted(values.map(id => number(id, 0, 65535, field, true)));
-  if (result.some(id => !Object.hasOwn(dictionary, id))) fail('UNKNOWN_FILTER_ID', `${field} 包含未知编号`, `Unknown ID in ${field}`);
+  if (result.some(id => !Object.hasOwn(dictionary, id))) fail('UNKNOWN_FILTER_ID', (fieldNames[field]?.[0] ?? field) + '包含当前目录中不存在的编号：' + result.filter(id => !Object.hasOwn(dictionary, id)).join(', ') + '。请重新选择有效条目，或更新工具后重试。', (fieldNames[field]?.[1] ?? field) + ' contains IDs absent from the current catalog: ' + result.filter(id => !Object.hasOwn(dictionary, id)).join(', ') + '. Reselect valid entries or update the tool and retry.');
   return result;
 }
 function readAffix(raw, sourcePath, sourceRole) {
@@ -148,12 +151,12 @@ function validateDraft(draft) {
   if (draft.analysis?.hasUnresolvedTargets && (!styles.equipment_other.show || !styles.idol_other.show)) fail('UNRESOLVED_HIDE_TARGETS', '配装有未解析的目标，不能启用兜底隐藏', 'Unresolved build targets prevent fallback hiding');
   if (!Array.isArray(draft.idols)) fail('INVALID_IDOL_FILTER', '神像需求格式无效', 'Invalid idol targets');
   const idolPools = new Map(), rowIds = new Set();
-  for (const row of draft.idols) {
+  for (const [rowIndex, row] of draft.idols.entries()) {
     if (!row || typeof row.id !== 'string' || !row.id || rowIds.has(row.id) || typeof row.enabled !== 'boolean') fail('INVALID_IDOL_FILTER', '神像条目编号或开关无效', 'Invalid idol row ID or enabled state');
     rowIds.add(row.id); if (!row.enabled) continue;
     const type = number(row.baseTypeId, 25, 33, 'baseTypeId', true), selected = ids(row.affixIds, catalog.affixes, 'idol.affixIds');
-    if (!selected.length) fail('EMPTY_IDOL_SELECTION', '启用的神像条目需要词缀', 'An enabled idol row needs affixes');
-    if (selected.some(id => !isValueIdolAffix(catalog.affixes[id], type))) fail('INCOMPATIBLE_IDOL_AFFIX', '神像词缀与形状不兼容', 'Idol affix is incompatible with its shape');
+    if (!selected.length) fail('EMPTY_IDOL_SELECTION', '神像需求第 ' + (rowIndex + 1) + ' 项已启用，但没有选择任何词缀。请选择至少一条适配词缀，或关闭该项后导出。', 'Idol target ' + (rowIndex + 1) + ' is enabled but has no selected affixes. Select at least one compatible affix or disable this target before export.');
+    if (selected.some(id => !isValueIdolAffix(catalog.affixes[id], type))) fail('INCOMPATIBLE_IDOL_AFFIX', '神像需求第 ' + (rowIndex + 1) + ' 项的词缀编号 ' + selected.filter(id => !isValueIdolAffix(catalog.affixes[id], type)).join(', ') + ' 不适配所选形状（类型 ' + type + '）。请更换形状或重新选择词缀。', 'Idol target ' + (rowIndex + 1) + ' has incompatible affix IDs ' + selected.filter(id => !isValueIdolAffix(catalog.affixes[id], type)).join(', ') + ' for shape type ' + type + '. Change the shape or reselect compatible affixes.');
     if (row.subTypeId != null && !Object.hasOwn(itemCatalog.bases[type]?.subtypes ?? {}, number(row.subTypeId, 0, 65535, 'subTypeId', true))) fail('INVALID_IDOL_SUBTYPE', '神像底材不属于所选形状', 'Idol base does not belong to the selected shape');
     idolPools.set(type, sorted([...(idolPools.get(type) ?? []), ...selected]));
   }

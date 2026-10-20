@@ -1,5 +1,6 @@
 import catalog from '../data/campaign-data.json' with { type: 'json' };
 import { cloneSaveData } from './save.js';
+import { displayValue, englishFieldPath } from './diagnostic-context.js';
 import { WorldError } from './world.js';
 
 export { catalog as campaignData };
@@ -7,7 +8,7 @@ const own = (object, key) => object != null && Object.hasOwn(object, key);
 const campaignIDs = new Set(Object.keys(catalog.quests).filter(id => catalog.quests[id].campaign));
 const number = value => Number(String(value));
 const integer = (value, min = 0, max = 2147483647) => (min < 0 && String(value) === '-1' || /^(?:0|[1-9]\d*)$/.test(String(value))) && Number.isSafeInteger(number(value)) && number(value) >= min && number(value) <= max;
-const fail = () => { throw new WorldError('CAMPAIGN_SAVE_FORMAT', '此存档的任务或天赋字段不符合当前版本，无法安全执行“速通至异界”。', 'This save’s quest or passive fields do not match the current format; campaign skip cannot be applied safely.'); };
+const fail = (path, value, expected) => { throw new WorldError('CAMPAIGN_SAVE_FORMAT', '无法执行“速通至异界”：' + path + '需要' + expected.zh + '，当前为 ' + displayValue(value) + '。请重新上传游戏正常保存的角色存档；若仍失败，请附此错误信息反馈。', 'Campaign skip cannot use ' + englishFieldPath(path) + ' in the current format: expected ' + expected.en + ', got ' + displayValue(value, 'en') + '. Upload a character save written by the game; if it still fails, report this error.'); };
 
 /** The native loader resolves replacement steps and ignores SavedQuest.state. */
 export function isQuestCompleted(quest) {
@@ -39,30 +40,31 @@ export function earnedPassivePoints(level, questRewards) {
 }
 
 function validate(data) {
-  if (!Array.isArray(data?.savedQuests) || !Array.isArray(data.unlockedWaypointScenes)
-      || data.unlockedWaypointScenes.some(scene => typeof scene !== 'string')
-      || typeof data.portalUnlocked !== 'boolean' || !own(data, 'lastVisitedTownScene')
-      || (data.lastVisitedTownScene !== null && typeof data.lastVisitedTownScene !== 'string')
-      || !integer(data.level, 1, 100)) fail();
+  const check = (valid, path, value, zh, en) => { if (!valid) fail(path, value, { zh, en }); };
+  check(Array.isArray(data?.savedQuests), 'savedQuests（任务列表）', data?.savedQuests, '任务记录数组', 'a quest-record array');
+  check(Array.isArray(data.unlockedWaypointScenes), 'unlockedWaypointScenes（传送点）', data.unlockedWaypointScenes, '场景名称数组', 'an array of scene names');
+  check(!data.unlockedWaypointScenes.some(scene => typeof scene !== 'string'), 'unlockedWaypointScenes', data.unlockedWaypointScenes, '每项均为场景名称字符串', 'scene-name strings');
+  check(typeof data.portalUnlocked === 'boolean', 'portalUnlocked（回城传送门）', data.portalUnlocked, '布尔开关', 'a boolean');
+  check(own(data, 'lastVisitedTownScene') && (data.lastVisitedTownScene === null || typeof data.lastVisitedTownScene === 'string'), 'lastVisitedTownScene（登录场景）', data.lastVisitedTownScene, '场景名称或 null', 'a scene name or null');
+  check(integer(data.level, 1, 100), 'level（角色等级）', data.level, '1–100 的整数', 'an integer from 1 to 100');
   const tree = data.savedCharacterTree;
-  if (!tree || !Array.isArray(tree.nodeIDs) || !Array.isArray(tree.nodePoints)
-      || tree.nodeIDs.length !== tree.nodePoints.length || tree.nodePoints.some(point => !integer(point, 0, 255))
-      || !integer(tree.unspentPoints, 0, 255)) fail();
+  check(tree && Array.isArray(tree.nodeIDs) && Array.isArray(tree.nodePoints), 'savedCharacterTree（被动树）', tree, 'nodeIDs 与 nodePoints 两个数组', 'nodeIDs and nodePoints arrays');
+  check(tree.nodeIDs.length === tree.nodePoints.length, 'savedCharacterTree.nodePoints', tree.nodePoints, '与节点编号数量 ' + tree.nodeIDs.length + ' 一致', 'the same entry count as nodeIDs (' + tree.nodeIDs.length + ')');
+  check(!tree.nodePoints.some(point => !integer(point, 0, 255)), 'savedCharacterTree.nodePoints', tree.nodePoints, '每项均为 0–255 的整数', 'integers from 0 to 255');
+  check(integer(tree.unspentPoints, 0, 255), 'savedCharacterTree.unspentPoints（未分配被动点）', tree.unspentPoints, '0–255 的整数', 'an integer from 0 to 255');
   const ids = new Set();
-  for (const quest of data.savedQuests) {
-    if (!quest || !integer(quest.questID) || ids.has(String(quest.questID)) || !integer(quest.questStepID, -1)
-        || !['completeObjectives', 'failedObjectives', 'nolongerRelevantObjectives', 'objectiveProgress'].every(key => Array.isArray(quest[key]))) fail();
+  for (const [index, quest] of data.savedQuests.entries()) {
+    const path = 'savedQuests[' + index + ']';
+    check(quest && integer(quest.questID) && !ids.has(String(quest.questID)), path + '.questID', quest?.questID, '不重复的非负任务编号', 'a unique non-negative quest ID');
+    check(integer(quest.questStepID, -1), path + '.questStepID', quest.questStepID, '有效步骤整数（最低 -1）', 'an integer step ID of at least -1');
+    for (const key of ['completeObjectives', 'failedObjectives', 'nolongerRelevantObjectives', 'objectiveProgress']) check(Array.isArray(quest[key]), path + '.' + key, quest[key], '数组', 'an array');
     ids.add(String(quest.questID));
     const step = catalog.steps[String(quest.questStepID)];
-    // Refuse unknown steps on known quests rather than awarding their rewards twice.
-    if (catalog.quests[String(quest.questID)] && (!step || step[0] !== number(quest.questID))) fail();
-    if (quest.objectiveProgress.some(progress => !progress || !integer(progress.objectiveID) || !integer(progress.progress))) fail();
-    for (const key of ['completeObjectives', 'failedObjectives', 'nolongerRelevantObjectives']) {
-      if (quest[key].some(id => !integer(id))) fail();
-    }
+    check(!catalog.quests[String(quest.questID)] || (step && step[0] === number(quest.questID)), path + '.questStepID（任务 ' + quest.questID + '）', quest.questStepID, '属于该任务的当前版本步骤', 'a current-game step belonging to quest ' + quest.questID);
+    check(!quest.objectiveProgress.some(progress => !progress || !integer(progress.objectiveID) || !integer(progress.progress)), path + '.objectiveProgress', quest.objectiveProgress, '有效目标编号及非负进度', 'valid objective IDs and non-negative progress');
+    for (const key of ['completeObjectives', 'failedObjectives', 'nolongerRelevantObjectives']) check(!quest[key].some(id => !integer(id)), path + '.' + key, quest[key], '非负目标编号', 'non-negative objective IDs');
   }
 }
-
 /** An opt-in, idempotent patch. It never uses another character's saved progress. */
 export function applyCampaignSkip(saveData) {
   validate(saveData);

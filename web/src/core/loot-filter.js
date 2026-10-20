@@ -36,7 +36,7 @@ const warning = (code, zh, en, rowId) => ({ code, message: label(zh, en), ...(ro
 const nameOf = (item, fallback = '') => item?.name ?? label(null, fallback);
 export function filterLabel(value, language = 'zh') { return typeof value === 'string' ? value : value?.[language] || value?.en || value?.zh || ''; }
 export class FilterError extends Error {
-  constructor(code, zh, en, rowId) { super(`${zh} / ${en}`); this.name = 'FilterError'; this.code = code; this.rowId = rowId; }
+  constructor(code, zh, en, rowId) { super(`${zh} / ${en}`); this.name = 'FilterError'; this.code = code; this.rowId = rowId; this.messageZh = zh; this.messageEn = en; }
 }
 const fail = (code, zh, en, rowId) => { throw new FilterError(code, zh, en, rowId); };
 function number(value, min, max, field, rowId) {

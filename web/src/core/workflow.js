@@ -1,4 +1,5 @@
 import { parseSave, serializeSave, diffSave } from './save.js';
+import { withErrorContext } from './diagnostic-context.js';
 import { fetchPlannerBuild, applyPlannerBuild } from './planner.js';
 import { applyCampaignSkip } from './campaign.js';
 import { applyEndgameSkip } from './endgame.js';
@@ -80,13 +81,15 @@ export function createWorkflow({ fetchBuild = fetchPlannerBuild } = {}) {
       try {
         const files = Array.from(incoming);
         if (!files.length) return false;
-        if (files.length > (state.route==='world'?256:2)) fail('FILE_SET', '所选文件数量超过此流程上限。', 'Too many files for this workflow.');
+        if (files.length > (state.route==='world'?256:2)) fail('FILE_SET', '本次选择 ' + files.length + ' 个文件，此流程每批最多 ' + (state.route==='world'?256:2) + ' 个。请减少选择后重新添加。', 'Selected ' + files.length + ' files; this workflow allows at most ' + (state.route==='world'?256:2) + ' per batch. Select fewer files and retry.');
         const next = new Map(state.files);
         for (const file of files) {
-          if (file.size > 32 * 1024 * 1024) fail('FILE_TOO_LARGE', '单个文件不能超过 32 MB。', 'Each file must be at most 32 MB.');
-          const original = parseSave(await file.text(), file.name);
+          if (file.size > 32 * 1024 * 1024) fail('FILE_TOO_LARGE', '文件「' + file.name + '」大小为 ' + (file.size / 1048576).toFixed(2) + ' MiB，单文件上限为 32 MiB。请确认选择的是原始文本存档。', 'File "' + file.name + '" is ' + (file.size / 1048576).toFixed(2) + ' MiB; the per-file limit is 32 MiB. Select the native text save.');
+          let original;
+          try { original = parseSave(await file.text(), file.name); }
+          catch (error) { throw withErrorContext(error, '文件「' + file.name + '」', 'File "' + file.name + '"', { filename: file.name }); }
           if (fileRead !== token) return false;
-          if ([...next.values()].some(entry => entry.original.outputName.toLowerCase() === original.outputName.toLowerCase())) fail('DUPLICATE_FILE', '此存档已载入，请先移除旧文件。', 'This save is already loaded. Remove it before replacing it.');
+          if ([...next.values()].some(entry => entry.original.outputName.toLowerCase() === original.outputName.toLowerCase())) fail('DUPLICATE_FILE', '文件「' + file.name + '」对应的存档 ' + original.outputName + ' 已载入。请先移除旧文件，再添加这一份。', 'File "' + file.name + '" resolves to save ' + original.outputName + ', which is already loaded. Remove the existing file before adding this copy.');
           next.set(original.name, { original });
         }
         if([...next.values()].reduce((sum,{original})=>sum+original.originalText.length,0)>256*1024*1024)fail('FILE_SET','载入文件总量不能超过 256 MB。','Loaded files must total no more than 256 MB.');
@@ -111,7 +114,11 @@ export function createWorkflow({ fetchBuild = fetchPlannerBuild } = {}) {
         // These three character settings are mandatory in this workflow.
         const options = { ...state.options, class: true, level: true, weaverTree: false };
         // Quest rewards must exist before the planner validates its passive budget.
-        const input = options.campaignSkip ? applyCampaignSkip(character.data).data : character.data;
+        let input = character.data;
+        if (options.campaignSkip) {
+          try { input = applyCampaignSkip(character.data).data; }
+          catch (error) { throw withErrorContext(error, '角色存档「' + character.name + '」', 'Character save "' + character.name + '"', { filename: character.name }); }
+        }
         const applied = applyPlannerBuild(input, state.build, options);
         const documents = [...state.files.values()].map(({ original }) => original.name === character.name ? { ...original, data: applied.data } : original);
         state.synced = options.endgameSkip ? applyEndgameSkip(documents) : documents;

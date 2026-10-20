@@ -2,6 +2,7 @@ import catalog from './game-item-data.json' with { type: 'json' };
 import LZString from 'lz-string';
 import worldData from '../data/world-data.json' with { type: 'json' };
 import { cloneSaveData } from './save.js';
+import { displayValue } from './diagnostic-context.js';
 
 // Independently implemented from ItemData.RebuildID in game build 8dfd6929…:
 // version 6, RVA 0x1205e80. See tools/extract-game-data.py and tests/items.test.js.
@@ -19,11 +20,15 @@ export class UnsupportedItemError extends Error {
     super(message); this.name = 'UnsupportedItemError'; this.code = code; this.details = details;
   }
 }
-function fail(code, message, details) { throw new UnsupportedItemError(code, message, details); }
+function fail(code, message, details, messageEn) {
+  const error = new UnsupportedItemError(code, message, details);
+  if (messageEn) { error.messageZh = message; error.messageEn = messageEn; }
+  throw error;
+}
 function int(value, min, max, field) {
   const n = Number(value);
   if (value == null || value === '' || typeof value === 'boolean' || !Number.isSafeInteger(n) || n < min || n > max) {
-    fail('INVALID_ITEM', `无效物品字段：${field} / Invalid item field: ${field}`, { field });
+    fail('INVALID_ITEM', '物品字段 ' + field + ' 当前为 ' + displayValue(value) + '，需要 ' + min + '–' + max + ' 的整数。请在模拟器中检查该字段后重试。', { field, value, min, max }, 'Item field ' + field + ' is ' + displayValue(value, 'en') + '; expected an integer from ' + min + ' to ' + max + '. Check this field in the planner and retry.');
   }
   return n;
 }
@@ -294,20 +299,20 @@ function validateEquippedIdolGrid(savedItems) {
     }
     grid = catalog.idolGrids[altar.subTypeId];
   }
-  const occupied = new Set();
-  for (const savedItem of idols) {
+  const occupied = new Map();
+  for (const [index, savedItem] of idols.entries()) {
     const idol = decodeSavedItem(savedItem);
     if (!idol.supported || idol.baseTypeId < 25 || idol.baseTypeId > 33) fail('UNSUPPORTED_IDOL_LAYOUT', 'An equipped idol has an unverified layout.');
     const [width, height] = catalog.bases[idol.baseTypeId].size;
     const x = int(savedItem.inventoryPosition?.x, 0, 4, 'idol.inventoryPosition.x');
     const y = int(savedItem.inventoryPosition?.y, 0, 4, 'idol.inventoryPosition.y');
-    if (x + width > 5 || y + height > 5) fail('INVALID_IDOL_POSITION', 'An idol is outside the 5 × 5 game grid.');
+    if (x + width > 5 || y + height > 5) fail('INVALID_IDOL_POSITION', '存档神像第 ' + (index + 1) + ' 项尺寸为 ' + width + '×' + height + '，左下角坐标（' + (x + 1) + '，' + (y + 1) + '）超出 5×5 神像格。请在游戏或模拟器中重新摆放。 / Saved idol ' + (index + 1) + ' is ' + width + 'x' + height + ' at bottom-left coordinate (' + (x + 1) + ', ' + (y + 1) + '), outside the 5x5 grid. Reposition it in the game or planner.');
     for (let dx = 0; dx < width; dx++) for (let dy = 0; dy < height; dy++) {
       // Serialized matrices are top-first; the saved inventory y axis starts at the bottom.
-      if (grid[4 - y - dy][x + dx] === 99) fail('BLOCKED_IDOL_CELL', '神像占用了当前祭坛的禁用格 / An idol occupies a blocked cell in the equipped altar.');
+      if (grid[4 - y - dy][x + dx] === 99) fail('BLOCKED_IDOL_CELL', '神像第 ' + (index + 1) + ' 项占用了当前祭坛禁用格（左下角为 1,1；格位 ' + (x + dx + 1) + ',' + (y + dy + 1) + '）。请在模拟器中调整神像或祭坛布局。 / Idol ' + (index + 1) + ' occupies blocked altar cell (' + (x + dx + 1) + ', ' + (y + dy + 1) + '), using bottom-left origin (1,1). Adjust the idol or altar layout in the planner.');
       const key = `${x + dx}:${y + dy}`;
-      if (occupied.has(key)) fail('OVERLAPPING_IDOLS', 'Equipped idols overlap.');
-      occupied.add(key);
+      if (occupied.has(key)) fail('OVERLAPPING_IDOLS', '存档神像第 ' + (index + 1) + ' 项与第 ' + occupied.get(key) + ' 项在格位 ' + (x + dx + 1) + ',' + (y + dy + 1) + ' 重叠。请重新摆放后重试。 / Saved idols ' + (index + 1) + ' and ' + occupied.get(key) + ' overlap at cell (' + (x + dx + 1) + ', ' + (y + dy + 1) + '). Reposition them and retry.');
+      occupied.set(key, index + 1);
     }
   }
 }
@@ -332,9 +337,14 @@ export function applyPlannerItems(save, build, options = {}) {
     try { const encoded = encodePlannerItem(item, { ...context, offline: true }); if (item.faction?.[0] === 1) removedMerchantRequirement = true; return encoded; }
     catch (error) {
       if (!(error instanceof UnsupportedItemError)) throw error;
-      const [zh, en = zh] = error.message.split(' / ');
-      throw new UnsupportedItemError(error.code, `${path}（${item.id}）：${zh} / ${path} (${item.id}): ${en}`,
-        { ...error.details, path, itemId: item.id });
+      const [rawZh, rawEn = rawZh] = error.message.split(' / ');
+      const zh = error.messageZh ?? (error.messageEn ? error.message : rawZh), en = error.messageEn ?? rawEn;
+      const slotLabels = { head: '头盔', chest: '胸甲', weapon1: '主手', weapon2: '副手', hands: '手套', waist: '腰带', feet: '鞋子', ring1: '戒指 1', ring2: '戒指 2', amulet: '项链', relic: '遗物', idol_altar: '神像祭坛' };
+      const position = path.startsWith('equipment.') ? (slotLabels[path.slice(10)] ?? path) + ' · ' : '';
+      const advice = '请在模拟器中检查此物品和词缀，或更新工具后重试；反馈时请附此物品位置。';
+      const messageZh = position + path + '（' + item.id + '）：' + zh + '。' + advice;
+      const messageEn = path + ' (' + item.id + '): ' + en + '. Check this item and its affixes in the planner or update the tool; include this item position when reporting the error.';
+      throw Object.assign(new UnsupportedItemError(error.code, messageZh + ' / ' + messageEn, { ...error.details, path, itemId: item.id }), { messageZh, messageEn });
     }
   }
 
@@ -353,25 +363,25 @@ export function applyPlannerItems(save, build, options = {}) {
         const base = resolvePlannerItemId(item.id).baseTypeId;
         const allowed = { head: [0], chest: [1], hands: [4], waist: [2], feet: [3], ring1: [21], ring2: [21], amulet: [20], relic: [22], idol_altar: [41],
           weapon1: [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 23, 24], weapon2: [5, 6, 7, 8, 9, 10, 11, 17, 18, 19] };
-        if (!allowed[slot].includes(base)) fail('INVALID_EQUIPMENT_SLOT', `The item does not fit slot ${slot}.`);
+        if (!allowed[slot].includes(base)) fail('INVALID_EQUIPMENT_SLOT', '装备位置 equipment.' + slot + ' 放入了不适配的物品（底材类型 ' + base + '，编号 ' + item.id + '）。请在模拟器中将它移至正确部位。 / Item ' + item.id + ' (base type ' + base + ') does not fit equipment.' + slot + '. Move it to the correct equipment slot in the planner.', { slot, baseTypeId: base, itemId: item.id });
       }
       replacements.set(containerID, item?.id ? [encodeSelected(item, { containerID, usedIds, maxRolls: options.maxRolls }, `equipment.${slot}`)] : []);
     }
   }
   if (options.idols !== false) {
     if (!Array.isArray(build.idols)) fail('INVALID_IDOLS', 'Planner idols must be an array.');
-    const cells = new Set();
-    const idols = build.idols.filter(Boolean).map(item => {
+    const cells = new Map();
+    const idols = build.idols.filter(Boolean).map((item, index) => {
       const identity = resolvePlannerItemId(item.id);
       if (identity.baseTypeId < 25 || identity.baseTypeId > 33) fail('INVALID_IDOL', 'The idol grid contains a non-idol.');
       const [width, height] = catalog.bases[identity.baseTypeId].size;
       const x = int(item.x, 1, 5, 'idol.x') - 1;
       const y = 6 - int(item.y, 1, 5, 'idol.y') - height;
-      if (x + width > 5 || y < 0 || y + height > 5) fail('INVALID_IDOL_POSITION', 'An idol is outside the 5 × 5 game grid.');
+      if (x + width > 5 || y < 0 || y + height > 5) fail('INVALID_IDOL_POSITION', '配装神像第 ' + (index + 1) + ' 项在坐标（' + item.x + '，' + item.y + '）、尺寸 ' + width + '×' + height + '，超出 5×5 神像格。请在模拟器中重新摆放。 / Planner idol ' + (index + 1) + ' at (' + item.x + ', ' + item.y + ') with size ' + width + 'x' + height + ' is outside the 5x5 grid. Reposition it in the planner.');
       for (let dx = 0; dx < width; dx++) for (let dy = 0; dy < height; dy++) {
         const key = `${x + dx}:${y + dy}`;
-        if (cells.has(key)) fail('OVERLAPPING_IDOLS', 'Planner idols overlap.');
-        cells.add(key);
+        if (cells.has(key)) fail('OVERLAPPING_IDOLS', '配装神像第 ' + (index + 1) + ' 项（坐标 ' + item.x + ',' + item.y + '）与第 ' + cells.get(key) + ' 项重叠。请在模拟器中分开摆放后重试。 / Planner idol ' + (index + 1) + ' at (' + item.x + ', ' + item.y + ') overlaps idol ' + cells.get(key) + '. Separate them in the planner and retry.');
+        cells.set(key, index + 1);
       }
       return encodeSelected(item, { containerID: 29, inventoryPosition: { x, y }, usedIds, maxRolls: options.maxRolls }, `idols[${item.x},${item.y}]`);
     });

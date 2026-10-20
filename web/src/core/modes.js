@@ -69,14 +69,15 @@ function makeStash(character,source,global,name,target){
   if(global.data.partitionKey!=null)tab.partitionKey=global.data.partitionKey;
   return [makeDocument(name,data),makeDocument(tab.id,tab)];
 }
-function add(a,b){
+function add(a,b,label='Resource'){
+  const names=typeof label==='string'?{zh:label,en:label}:label;
   if(!integer(a??0)||!integer(b??0))fail('MODE_RESOURCE_FORMAT','资源数量格式无效，未执行合并。','Invalid resource quantity; merge was not applied.');
   const sum=BigInt(String(a??0))+BigInt(String(b??0));
-  if(sum>2147483647n)fail('MODE_RESOURCE_OVERFLOW','合并后的资源数量超过游戏上限。','Merged resource quantity exceeds the game limit.');
+  if(sum>2147483647n)fail('MODE_RESOURCE_OVERFLOW',names.zh+'合并数量为 '+String(a??0)+' + '+String(b??0)+' = '+sum+'，超过游戏上限 2147483647。请在游戏中处理资源数量后重新上传仓库。',names.en+' merge would produce '+String(a??0)+' + '+String(b??0)+' = '+sum+', above the game limit of 2147483647. Reduce the resource quantities in the game and upload the stashes again.');
   return Number(sum);
 }
 function mergeResources(source,target){
-  for(const key of ['gold','ancientBones']){if(source[key]!=null){target[key]=add(source[key],target[key]);source[key]=0;}}
+  for(const key of ['gold','ancientBones']){if(source[key]!=null){target[key]=add(source[key],target[key],key==='gold'?{zh:'金币',en:'Gold'}:{zh:'远古骨骸',en:'Ancient bones'});source[key]=0;}}
   const specifications={savedShards:r=>String(r.shardType),materialsList:resourceKey,keysList:resourceKey,wovenEchoesList:resourceKey};
   for(const [key,identity] of Object.entries(specifications)){
     const from=array(source,key),to=array(target,key),map=new Map();
@@ -86,8 +87,8 @@ function mergeResources(source,target){
       if(!integer(item.quantity)||(key==='savedShards'&&!integer(item.shardType)))fail('MODE_RESOURCE_FORMAT','源资源数量或身份无效。','Invalid source resource quantity or identity.');
       const id=identity(item);if(seen.has(id))fail('MODE_RESOURCE_FORMAT','源仓库存在重复资源记录。','Duplicate resource records in the source stash.');seen.add(id);
       const existing=map.get(id);
-      if(existing)existing.quantity=add(existing.quantity,item.quantity);
-      else{add(item.quantity,0);const copy=cloneSaveData(item);to.push(copy);map.set(id,copy);}
+      if(existing)existing.quantity=add(existing.quantity,item.quantity,key+' #'+id);
+      else{add(item.quantity,0,key+' #'+id);const copy=cloneSaveData(item);to.push(copy);map.set(id,copy);}
     }
     source[key]=[];
   }

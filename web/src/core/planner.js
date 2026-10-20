@@ -2,7 +2,8 @@ import { cloneSaveData } from './save.js';
 import { campaignSummary, earnedPassivePoints } from './campaign.js';
 import { applyPlannerItems } from './items.js';
 import gameData from '../data/planner-game-data.js';
-import { classSkillIssue, lockedSkillIssue, skillPointIssue } from './planner-diagnostics.js';
+import { displayValue } from './diagnostic-context.js';
+import { classSkillIssue, lockedSkillIssue, skillPointIssue, nodeLimitIssue, masteryNodeIssue, nodeRequirementIssues } from './planner-diagnostics.js';
 
 const HOSTS = new Set(['www.lastepochtools.com', 'lastepochtools.com']);
 const LANGUAGES = new Set(['en', 'zh', 'de', 'es', 'fr', 'ja', 'ko', 'pl', 'pt', 'ru']);
@@ -29,7 +30,7 @@ function failSkillIssues(code, issues) {
 function integer(value, min, max, field) {
   const n = Number(value);
   if (value == null || value === '' || typeof value === 'boolean' || !Number.isSafeInteger(n) || n < min || n > max) {
-    fail('INVALID_BUILD', `无效配装字段 / Invalid build field: ${field}`, { field });
+    failSkillIssues('INVALID_BUILD', [{ zh: '字段「' + field + '」当前为 ' + displayValue(value) + '，需要 ' + min + '–' + max + ' 的整数。请检查来源数据后重新导入。', en: 'Field "' + field + '" is ' + displayValue(value, 'en') + '; expected an integer from ' + min + ' to ' + max + '. Check the source data and import it again.', details: { field, min, max } }]);
   }
   return n;
 }
@@ -151,11 +152,11 @@ export function summarizeBuild(build) {
   };
 }
 
-function validateCurrentTree(selected, schema, { mastery, passive = false, field }) {
+function validateCurrentTree(selected, schema, { classId, mastery, passive = false, field }) {
   for (const [id, points] of selected) {
     const node = schema.nodes[id];
-    if (!node || points > node.max) fail('INCOMPATIBLE_TREE', `配装节点与当前游戏不兼容 / Build node does not match the current game: ${field}/${id}`, { field, node: id, points, maximum: node?.max });
-    if (passive && node.mastery > 0 && node.mastery !== mastery && node.level > 22) fail('INVALID_MASTERY_NODE', `节点需要另一专精 / Node requires another mastery: ${id}`);
+    if (!node || points > node.max) failSkillIssues('INCOMPATIBLE_TREE', [nodeLimitIssue(field, id, points, node?.max)]);
+    if (passive && node.mastery > 0 && node.mastery !== mastery && node.level > 22) failSkillIssues('INVALID_MASTERY_NODE', [masteryNodeIssue(classId, mastery, id, node.mastery, node.level)]);
   }
   // Reconstruct a legal allocation order. Alternatives in game node requirements are OR.
   const placed = new Map();
@@ -174,7 +175,16 @@ function validateCurrentTree(selected, schema, { mastery, passive = false, field
       remaining -= 1;
       changed = true;
     }
-    if (!changed) fail('INVALID_TREE_REQUIREMENTS', `配装不符合当前节点前置要求 / Current node prerequisites are not met: ${field}`, { field });
+    if (!changed) {
+      const blocked = [...selected].filter(([id, points]) => (placed.get(id) ?? 0) < points).map(([id]) => {
+        const node = schema.nodes[id];
+        return { id, mastery: node.mastery, threshold: passive ? node.level : 0, masteryPoints: masteryTotals[node.mastery] ?? 0,
+          needsBase: passive && node.mastery > 0 && masteryTotals[0] < 20, basePoints: masteryTotals[0],
+          parents: node.requires.length && !node.requires.some(([parent, min]) => (placed.get(parent) ?? 0) >= min)
+            ? node.requires.map(([parent, min]) => ({ id: parent, required: min, actual: placed.get(parent) ?? 0 })) : [] };
+      });
+      failSkillIssues('INVALID_TREE_REQUIREMENTS', nodeRequirementIssues(field, blocked, classId));
+    }
   }
   return { nodeIDs: [...selected.keys()], nodePoints: [...selected.values()] };
 }
@@ -187,7 +197,7 @@ function currentTreeVersion(sourceVersion, currentVersion, warnings, field) {
     return currentVersion;
   }
   const version = integer(sourceVersion, 0, 65535, `${field}.version`);
-  if (version > currentVersion) fail('FUTURE_TREE_VERSION', `配装技能树比本工具数据更新 / Build tree is newer than this tool: ${field}`);
+  if (version > currentVersion) fail('FUTURE_TREE_VERSION', (gameData.skills[field]?.name ?? (field === 'charTree' ? '角色被动树' : field)) + '的配装树版本为 ' + version + '，工具支持版本 ' + currentVersion + '。请更新工具，或使用匹配游戏版本的配装。 / Build tree ' + (gameData.skills[field]?.name ?? field) + ' has version ' + version + '; this tool supports version ' + currentVersion + '. Update the tool or use a build for the supported game version.', { field, sourceVersion: version, supportedVersion: currentVersion });
   if (version < currentVersion) warnings.push(`${field}: 已按当前节点规则校验并更新树版本 ${version} → ${currentVersion} / Validated against current node rules and updated tree version.`);
   return currentVersion;
 }
@@ -262,7 +272,7 @@ export function applyPlannerBuild(saveData, build, options = {}) {
   if (settings.passives) {
     const schema = gameData.passives[classId];
     const selected = selectedNodes(source.charTree.selected, 'charTree');
-    const nodes = validateCurrentTree(selected, schema, { mastery, passive: true, field: 'charTree' });
+    const nodes = validateCurrentTree(selected, schema, { classId, mastery, passive: true, field: 'charTree' });
     const budget = Math.max(savedPointBudget(saveData), earnedOldPoints) + levelPointChange;
     const spent = sum(selected.values());
     if (spent > budget || budget < 0) fail('INSUFFICIENT_PASSIVE_POINTS', `配装需要 ${spent} 天赋点，存档可用 ${Math.max(0, budget)} / Build needs ${spent} passive points; save has ${Math.max(0, budget)}.`, { required: spent, available: Math.max(0, budget) });
@@ -286,9 +296,9 @@ export function applyPlannerBuild(saveData, build, options = {}) {
     const trees = source.skillTrees.filter(Boolean).map(tree => {
       if (!object(tree) || typeof tree.treeID !== 'string' || !own(gameData.skills, tree.treeID)) fail('UNKNOWN_SKILL', '配装包含当前游戏中未知的技能 / Unknown skill in build.', { treeID: tree?.treeID });
       const slot = integer(tree.slotNumber, 0, 4, 'skillTrees.slotNumber');
-      if (slot >= unlockedSlots) fail('LOCKED_SKILL_SLOT', '角色等级尚未解锁此专精槽 / Character level has not unlocked this specialization slot.', { slot });
+      if (slot >= unlockedSlots) fail('LOCKED_SKILL_SLOT', '技能专精第 ' + (slot + 1) + ' 槽（' + gameData.skills[tree.treeID].name + '）需要角色 ' + [4, 8, 20, 35, 50][slot] + ' 级，当前同步等级 ' + targetLevel + ' 级。请提高配装等级或移除此专精槽。 / Specialization slot ' + (slot + 1) + ' (' + gameData.skills[tree.treeID].name + ') requires character level ' + [4, 8, 20, 35, 50][slot] + '; target level is ' + targetLevel + '. Raise the build level or remove this specialization.', { slot, required: [4, 8, 20, 35, 50][slot], actual: targetLevel });
       requireSkill(tree.treeID, { kind: 'specialization', slotNumber: slot });
-      if (slots.has(slot) || ids.has(tree.treeID)) fail('DUPLICATE_SKILL', '配装包含重复技能或专精槽 / Duplicate skill or specialization slot.');
+      if (slots.has(slot) || ids.has(tree.treeID)) fail('DUPLICATE_SKILL', '技能「' + gameData.skills[tree.treeID].name + '」或专精第 ' + (slot + 1) + ' 槽重复。每个技能和槽位只能出现一次，请在模拟器中移除重复项。 / Skill "' + gameData.skills[tree.treeID].name + '" or specialization slot ' + (slot + 1) + ' is duplicated. Each skill and slot can appear only once; remove the duplicate in the planner.', { treeID: tree.treeID, slot });
       slots.add(slot); ids.add(tree.treeID);
       const schema = gameData.skills[tree.treeID];
       const selected = selectedNodes(tree.selected, `skillTrees.${tree.treeID}`);

@@ -30,7 +30,7 @@ const character = () => flow.previewMode().documents.find(doc => doc.kind === 'c
 const stash = () => currentStash(flow.previewMode().documents);
 const draft = (key, fallback) => state.worldEdits.get(key)?.value ?? fallback;
 function errorText(error) {
-  if (language === 'en' && error.messageEn) return error.messageEn;
+  if (error.messageEn) return language === 'en' ? error.messageEn : (error.messageZh ?? error.message);
   const parts = error.message.split(' / ');
   return parts.length === 2 ? parts[language === 'zh' ? 0 : 1] : error.message;
 }
@@ -306,7 +306,7 @@ function bindEvents() {
   document.querySelector('#filter-import')?.addEventListener('click', () => document.querySelector('#filter-xml-input').click());
   document.querySelector('#filter-xml-input')?.addEventListener('change', event => { const file = event.target.files?.[0]; event.target.value = ''; return importFilterFile(file); });
   document.querySelector('#filter-back')?.addEventListener('click',()=>{view.mode='sync';flow.goBack(0);view.notice='';renderStep(-1);});
-  if(view.mode==='filter') bindFilterWorkbench(filterView,{render,notify:(message,error=false)=>{if(error)state.error=new Error(message);else{state.error=null;view.notice=message;}render();},downloadFile:(text,name,mime)=>downloadFile({text,name},mime)});
+  if(view.mode==='filter') bindFilterWorkbench(filterView,{render,notify:(message,error=false)=>{if(error)state.error=message && typeof message.message === 'string' ? message : new Error(message);else{state.error=null;view.notice=message;}render();},downloadFile:(text,name,mime)=>downloadFile({text,name},mime)});
   document.querySelector('#build-url')?.addEventListener('input',event=>{state.buildUrl=event.target.value;});
   document.querySelectorAll('[data-sync]').forEach(input=>input.onchange=()=>{ flow.setOption(input.dataset.sync,input.checked); if (['campaignSkip','endgameSkip'].includes(input.dataset.sync)) render(); });
   document.querySelector('#next-button')?.addEventListener('click',()=>{const previous=state.step;view.notice='';view.downloaded=false;view.downloadedFiles.clear();if(state.step===1)state.step=2;else if(state.step===2)flow.synchronize();else if(state.step===3)flow.prepareReview();renderStep(previous);});

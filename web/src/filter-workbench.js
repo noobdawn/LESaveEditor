@@ -301,6 +301,6 @@ export function bindFilterWorkbench(state, { render, notify, downloadFile }) {
       const name = (draft.name || 'LastEpoch-Filter').replace(/[<>:"/\\|?*\u0000-\u001f]/g,'_').slice(0,100);
       downloadFile(output.xml,`${name}.xml`,'application/xml;charset=utf-8'); state.filterDirty = false;
       notify(text(state.language,'过滤器已下载，可在游戏内导入。','Filter downloaded. Import it in the game.'));
-    } catch (error) { notify(error.message,true); }
+    } catch (error) { notify(error,true); }
   });
 }
