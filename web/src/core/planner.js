@@ -2,6 +2,7 @@ import { cloneSaveData } from './save.js';
 import { campaignSummary, earnedPassivePoints } from './campaign.js';
 import { applyPlannerItems } from './items.js';
 import gameData from '../data/planner-game-data.js';
+import { classSkillIssue, lockedSkillIssue, skillPointIssue } from './planner-diagnostics.js';
 
 const HOSTS = new Set(['www.lastepochtools.com', 'lastepochtools.com']);
 const LANGUAGES = new Set(['en', 'zh', 'de', 'es', 'fr', 'ja', 'ko', 'pl', 'pt', 'ru']);
@@ -20,6 +21,11 @@ export class PlannerError extends Error {
 }
 
 function fail(code, message, details) { throw new PlannerError(code, message, details); }
+function failSkillIssues(code, issues) {
+  const error = new PlannerError(code, issues.map(issue => issue.zh).join('\n'), { ...issues[0].details, issues: issues.map(issue => issue.details) });
+  error.messageEn = issues.map(issue => issue.en).join('\n');
+  throw error;
+}
 function integer(value, min, max, field) {
   const n = Number(value);
   if (value == null || value === '' || typeof value === 'boolean' || !Number.isSafeInteger(n) || n < min || n > max) {
@@ -200,15 +206,15 @@ function skillAvailability(saveData, classId, mastery, level) {
     const node = schema.nodes[Number(tree.nodeIDs[index])];
     if (node) totals[node.mastery] += Number(tree.nodePoints[index]);
   }
-  return id => {
+  return (id, location) => {
     const rules = own(gameData.classSkills[classId], id) ? gameData.classSkills[classId][id] : null;
-    if (!rules) fail('SKILL_CLASS_MISMATCH', `技能不属于此职业 / Skill does not belong to this class: ${id}`, { treeID: id, classId });
+    if (!rules) failSkillIssues('SKILL_CLASS_MISMATCH', [classSkillIssue(id, location, classId)]);
     // CharacterClass.getUnlockedAbilities checks character level, points spent in
     // each mastery, and the chosen mastery for unlocks above 22 passive points.
     const unlocked = rules.some(rule => rule.kind === 'level' ? level >= rule.level
       : rule.kind === 'mastery' ? mastery === rule.mastery
         : totals[rule.mastery] >= rule.level && (rule.level <= 22 || mastery === rule.mastery));
-    if (!unlocked) fail('LOCKED_SKILL', `角色尚未解锁此技能，请检查等级和天赋 / Skill is not unlocked; check character level and passives: ${id}`, { treeID: id });
+    if (!unlocked) failSkillIssues('LOCKED_SKILL', [lockedSkillIssue(id, location, { classId, mastery, level, totals, rules })]);
   };
 }
 
@@ -276,11 +282,12 @@ export function applyPlannerBuild(saveData, build, options = {}) {
     const slots = new Set();
     const ids = new Set();
     const unlockedSlots = [4, 8, 20, 35, 50].filter(level => targetLevel >= level).length;
+    const pointIssues = [];
     const trees = source.skillTrees.filter(Boolean).map(tree => {
       if (!object(tree) || typeof tree.treeID !== 'string' || !own(gameData.skills, tree.treeID)) fail('UNKNOWN_SKILL', '配装包含当前游戏中未知的技能 / Unknown skill in build.', { treeID: tree?.treeID });
       const slot = integer(tree.slotNumber, 0, 4, 'skillTrees.slotNumber');
       if (slot >= unlockedSlots) fail('LOCKED_SKILL_SLOT', '角色等级尚未解锁此专精槽 / Character level has not unlocked this specialization slot.', { slot });
-      requireSkill(tree.treeID);
+      requireSkill(tree.treeID, { kind: 'specialization', slotNumber: slot });
       if (slots.has(slot) || ids.has(tree.treeID)) fail('DUPLICATE_SKILL', '配装包含重复技能或专精槽 / Duplicate skill or specialization slot.');
       slots.add(slot); ids.add(tree.treeID);
       const schema = gameData.skills[tree.treeID];
@@ -291,7 +298,10 @@ export function applyPlannerBuild(saveData, build, options = {}) {
       // Live profile exports (fromSaveFile=2) store the base XP level while
       // selected nodes already include equipment/passive bonus levels.
       const allocatedLevel = source.fromSaveFile === 2 ? Math.max(level, spent) : level;
-      if (spent > allocatedLevel) fail('INVALID_SKILL_POINTS', '技能分配点数超过配装技能等级 / Allocated skill points exceed build skill level.', { treeID: tree.treeID });
+      if (spent > allocatedLevel) {
+        pointIssues.push(skillPointIssue(tree.treeID, slot, level, spent));
+        return null;
+      }
       const version = currentTreeVersion(tree.version, schema.version, warnings, tree.treeID);
       const previous = data.savedSkillTrees.find(t => t.treeID === tree.treeID);
       const xpNeeded = gameData.skillXpThresholds[Math.min(level, 20) - 1];
@@ -302,13 +312,14 @@ export function applyPlannerBuild(saveData, build, options = {}) {
         ...nodes, unspentPoints: allocatedLevel - spent, nodesTaken: null, abilityXP: 0,
       };
     });
+    if (pointIssues.length) failSkillIssues('INVALID_SKILL_POINTS', pointIssues);
     set('savedSkillTrees', trees, 'skills');
   }
   if (settings.skillBar) {
     if (!Array.isArray(source.hud) || source.hud.length !== 5 || source.hud.some(id => typeof id !== 'string' || id.length > 100)) fail('INVALID_SKILL_BAR', '配装技能栏必须有五个位置 / Build skill bar must have five slots.');
     // Move-only and the class's innate evade are not in the unlockable skill list.
     const evadeId = { 0: 'evade3', 1: 'evade2', 2: 'evade5', 3: 'evade1', 4: 'evade4' }[classId];
-    for (const id of source.hud) if (id && id !== 'na28' && id !== evadeId) requireSkill(id);
+    for (const [slotNumber, id] of source.hud.entries()) if (id && id !== 'na28' && id !== evadeId) requireSkill(id, { kind: 'skillBar', slotNumber });
     set('abilityBar', [...source.hud], 'skillBar');
   }
   if (settings.equipment || settings.idols || settings.blessings) {

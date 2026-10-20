@@ -318,3 +318,30 @@ test('XML import controls avoid a build URL requirement and prevent competing im
   assert.equal(ui.filterView.filterDraft.build.id, 'om6w3Ypq');
   assert.equal(ui.view.filterImporting, false);
 });
+
+test('skill diagnostics reach the visible error panel in both languages without hiding other invalid skills', async () => {
+  const source = JSON.parse(readFileSync(new URL('./fixtures/planner-B4XP4b8d.json', import.meta.url), 'utf8'));
+  const ui = routeHarness(async () => source);
+  await ui.importSelectedBuild('B4XP4b8d');
+  const text = 'EPOCH' + JSON.stringify({
+    characterName: 'Synthetic', level: 100, characterClass: 1, chosenMastery: 1, originalMastery: 1,
+    savedItems: [], savedCharacterTree: { treeID: '', version: 7, nodeIDs: [], nodePoints: [], unspentPoints: 113 },
+    savedSkillTrees: [], abilityBar: ['', '', '', '', ''], savedQuests: [], cycle: 8, hardcore: false,
+  });
+  await ui.flow.addFiles([{ name: '1CHARACTERSLOT_BETA_9', text: async () => text }]);
+  ui.state.step = 2;
+  assert.equal(ui.flow.synchronize(), false);
+  assert.equal(ui.state.synced.length, 0);
+  ui.render();
+  let html = ui.elements.get('#app').innerHTML;
+  assert.match(html, /role="alert"/);
+  for (const name of ['Meteor', 'Flame Ward', 'Black Hole']) assert.ok(html.includes(name));
+  assert.match(html, /当前|已分配 25 点/);
+  const english = { dataset: { language: 'en' } };
+  ui.lists.set('[data-language]', [english]); ui.bindEvents(); english.onclick(); ui.render();
+  html = ui.elements.get('#app').innerHTML;
+  assert.match(html, /Specialization slot 2/);
+  assert.match(html, /level 24 but allocates 25 points/);
+  assert.match(html, /level 33 but allocates 35 points/);
+  assert.doesNotMatch(html, /已分配/);
+});
